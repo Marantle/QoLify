@@ -1,0 +1,27 @@
+name: PR
+
+on:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/lua-tools
+      - name: Lint
+        run: make lint
+      - name: Check formatting
+        run: make check
+      # Building all three zips proves the .toc file lists still resolve and
+      # packaging did not break, without uploading anywhere.
+      - name: Package all three artifacts
+        run: |
+          make package
+          make package-soundscaper
+          make package-decorspendwatch
+      - name: Upload the zips for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: "*.zip"

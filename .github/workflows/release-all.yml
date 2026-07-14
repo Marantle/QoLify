@@ -1,0 +1,41 @@
+name: Release all
+
+# Manual escape hatch for the rare case where the suite and both standalones
+# all changed at once. Day to day, publish a per-artifact GitHub release
+# instead (release.yml). This uploads straight from the chosen branch with
+# whatever versions the .tocs already carry, so bump those and the changelogs
+# first. It creates no tags and no GitHub releases.
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifacts:
+        description: What to upload
+        type: choice
+        options: [all, suite, soundscaper, decorspendwatch]
+        default: all
+      release_type:
+        description: CurseForge release type
+        type: choice
+        options: [release, beta, alpha]
+        default: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+      RELEASE_TYPE: ${{ inputs.release_type }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Upload to CurseForge
+        run: |
+          case '${{ inputs.artifacts }}' in
+            all) make release-all ;;
+            suite) make release ;;
+            soundscaper) make release-soundscaper ;;
+            decorspendwatch) make release-decorspendwatch ;;
+          esac

@@ -1,0 +1,93 @@
+name: Release
+
+# Publishing a GitHub release uploads exactly one artifact to CurseForge,
+# chosen by the tag name:
+#
+#   v1.2.3                  the QoLify suite
+#   soundscaper-v1.2.3      standalone SoundScaper
+#   decorspendwatch-v1.2.3  standalone DecorSpendwatch
+#
+# The CurseForge release type comes from the version: a tag containing
+# "-alpha" uploads as alpha and "-beta" as beta (so does ticking GitHub's
+# pre-release box on a plain tag). Anything else uploads as release. The .toc
+# version must match the tag exactly, suffix included, so a beta tag means
+# bumping the .toc to something like 0.2.0-beta.1 first.
+#
+# Standalones only get a tag when their own files changed, so an unchanged
+# standalone is never re-released. Needs the CURSEFORGE_TOKEN repository
+# secret.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Map the tag to an artifact
+        id: target
+        run: |
+          TAG='${{ github.event.release.tag_name }}'
+          case "$TAG" in
+            soundscaper-v*)
+              NAME=SoundScaper
+              TOC=QoLify_SoundScaper/SoundScaper.toc
+              TARGET=release-soundscaper
+              VERSION="${TAG#soundscaper-v}"
+              ;;
+            decorspendwatch-v*)
+              NAME=DecorSpendwatch
+              TOC=QoLify_DecorSpendwatch/DecorSpendwatch.toc
+              TARGET=release-decorspendwatch
+              VERSION="${TAG#decorspendwatch-v}"
+              ;;
+            v*)
+              NAME=QoLify
+              TOC=QoLify.toc
+              TARGET=release
+              VERSION="${TAG#v}"
+              ;;
+            *)
+              echo "Tag '$TAG' does not name an artifact."
+              echo "Use v<x.y.z> for the suite, or soundscaper-v<x.y.z> / decorspendwatch-v<x.y.z> for a standalone."
+              exit 1
+              ;;
+          esac
+          {
+            echo "name=$NAME"
+            echo "toc=$TOC"
+            echo "target=$TARGET"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
+      - name: Pick the CurseForge release type
+        run: |
+          case '${{ github.event.release.tag_name }}' in
+            *-alpha*) TYPE=alpha ;;
+            *-beta*) TYPE=beta ;;
+            *) TYPE=${{ github.event.release.prerelease && 'beta' || 'release' }} ;;
+          esac
+          echo "RELEASE_TYPE=$TYPE" >> "$GITHUB_ENV"
+      - name: Check the tag against the .toc version
+        run: |
+          TOC_VERSION=$(grep '^## Version:' '${{ steps.target.outputs.toc }}' | awk '{print $3}' | tr -d '\r')
+          if [ "$TOC_VERSION" != '${{ steps.target.outputs.version }}' ]; then
+            echo "The tag says ${{ steps.target.outputs.version }} but ${{ steps.target.outputs.toc }} says $TOC_VERSION."
+            echo "Bump the .toc (and the matching NS.VERSION) before tagging, or fix the tag."
+            exit 1
+          fi
+      - name: Build and upload to CurseForge
+        run: make ${{ steps.target.outputs.target }}
+      - name: Attach the zip to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload '${{ github.event.release.tag_name }}' '${{ steps.target.outputs.name }}-${{ steps.target.outputs.version }}.zip'

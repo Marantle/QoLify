@@ -1,0 +1,17 @@
+## Interface: 120007
+## Title: QoLify
+## Notes: A collection of small quality-of-life modules. Each module loads only when you enable it.
+## Version: 0.1.0
+## Author: Rothirr
+## IconTexture: Interface\Icons\INV_Misc_Gift_01
+## X-Curse-Project-ID: 1615328
+## SavedVariables: QoLifyDB
+
+QoLify.lua
+Modules.lua
+Settings.lua
+Minimap.lua
+QoL\QoL.lua
+QoL\QuickDelete.lua
+QoL\AutoRes.lua
+QoL\PartyKeys.lua

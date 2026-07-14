@@ -1,0 +1,15 @@
+## Interface: 120007
+## Title: QoLify: Standalone SoundScaper
+## Notes: Per-context sound levels. Volume and mute per audio channel for outdoors, dungeons, Mythic+, raids and raid bosses.
+## Version: 1.2.0
+## Author: Rothirr
+## IconTexture: Interface\Icons\INV_Misc_Bell_01
+## X-Curse-Project-ID: 1607539
+## SavedVariables: SoundScaperDB
+
+SoundScaper.lua
+SoundScaper_Sound.lua
+SoundScaper_Context.lua
+SoundScaper_Window.lua
+SoundScaper_Minimap.lua
+Host_Standalone.lua

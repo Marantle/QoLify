@@ -1,0 +1,26 @@
+## Interface: 120007
+## Title: QoLify: Standalone Decor Spendwatch
+## Notes: Set a gold budget for housing decor and get warned before you blow past it.
+## Category-enUS: Housing
+## Category-deDE: Behausung
+## Category-frFR: Logement
+## Category-esES: Vivienda
+## Category-esMX: Vivienda
+## Category-ruRU: Жильё
+## Category-koKR: 주택
+## Category-zhCN: 房屋
+## Category-zhTW: 房屋
+## Category-ptBR: Habitação
+## Category-itIT: Alloggio
+## Version: 1.1.0
+## Author: Rothirr
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
+## AddonCompartmentFunc: DecorSpendwatch_OnAddonCompartmentClick
+## X-Curse-Project-ID: 1588136
+## SavedVariables: DecorSpendwatchDB
+
+DecorSpendwatch.lua
+Settings.lua
+Merchant.lua
+Minimap.lua
+Host_Standalone.lua

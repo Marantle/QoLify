@@ -1,0 +1,17 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/lua-tools
+      - name: Lint
+        run: make lint
+      - name: Check formatting
+        run: make check

@@ -1,0 +1,18 @@
+name: Install Lua tools
+description: Install luacheck and stylua, pinned to the versions used for local development.
+
+runs:
+  using: composite
+  steps:
+    - name: Install luacheck
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y luarocks
+        sudo luarocks install luacheck 1.2.0
+    - name: Install stylua
+      shell: bash
+      run: |
+        curl -sSL -o /tmp/stylua.zip https://github.com/JohnnyMorganz/StyLua/releases/download/v2.5.2/stylua-linux-x86_64.zip
+        sudo unzip -o /tmp/stylua.zip -d /usr/local/bin
+        rm /tmp/stylua.zip
