@@ -2,7 +2,7 @@
 
 A modular collection of quality-of-life addons for WoW retail (Interface 120007 /
 Midnight). This one repo ships three CurseForge artifacts: the QoLify suite, plus
-standalone [SoundScaper](https://www.curseforge.com/wow/addons/soundscaper) and
+standalone [SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid) and
 [Decor Spendwatch](https://www.curseforge.com/wow/addons/decor-spendwatch).
 
 The core addon draws the settings panel and carries the small QoL tweaks. Bigger
