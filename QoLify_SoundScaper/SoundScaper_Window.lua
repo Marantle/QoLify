@@ -1,17 +1,18 @@
 local _, SS = ...
 
 local WIN_W = 530
-local WIN_H = 390
-local TITLE_H = 26
-local PAD = 10
+local WIN_H = 410
+local HEADER_H = 46 -- title row plus the divider under it
+local PAD = 18
 local TAB_W = 80
-local TAB_H = 22
+local TAB_H = 24
 local TAB_GAP = 4
 local ROW_H = 30
 local SLIDER_W = 240
+local TABS_Y = HEADER_H + 10
 
 -- Y offsets shared between the context panel and the copy panel
-local OVERRIDE_Y = TITLE_H + 8 + TAB_H + 52
+local OVERRIDE_Y = TABS_Y + TAB_H + 52
 local ROWS_TOP = OVERRIDE_Y + 28
 
 local CHAR_ROW_H = 26
@@ -30,16 +31,18 @@ local updating = false -- guards OnValueChanged while we push values into widget
 local headerFS, descFS, statusFS, overrideCB, overrideFS, enableCB, applyBtn, copyBtn
 
 -- Palette and widget factories: every color and repeated widget lives here once.
+-- Same flat dark look as Decor Spendwatch: WHITE8X8 backdrops, gold accents.
+
+local WHITE = "Interface/Buttons/WHITE8X8"
 
 local COLORS = {
-    accent = { 0.25, 0.6, 0.9 }, -- slider fill, addon identity color
-    gold = { 1, 0.82, 0 }, -- normal labels
+    accent = { 1, 0.82, 0 }, -- gold: ticks, slider fill, title
+    label = { 0.66, 0.66, 0.7 }, -- normal labels
     white = { 1, 1, 1 },
     green = { 0.4, 1, 0.4 }, -- tab of the profile currently in force
     red = { 1, 0.4, 0.4 }, -- muted / addon off
     redDark = { 0.4, 0.2, 0.2 }, -- slider fill while muted
-    dim = { 0.5, 0.5, 0.5 }, -- de-emphasized text
-    disabled = { 0.4, 0.4, 0.4 }, -- non-editable rows
+    disabled = { 0.4, 0.4, 0.4 }, -- de-emphasized and non-editable text
     grey = { 0.3, 0.3, 0.3 }, -- non-editable slider fill
 }
 
@@ -52,9 +55,37 @@ local function Tint(region, c)
 end
 
 local function NewCheck(parent, onClick)
-    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    cb:SetSize(22, 22)
-    cb:SetScript("OnClick", onClick)
+    local cb = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    cb:SetSize(18, 18)
+    cb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    cb:SetBackdropColor(0.1, 0.1, 0.13, 1)
+    cb:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
+    local tick = cb:CreateTexture(nil, "OVERLAY")
+    tick:SetPoint("CENTER")
+    tick:SetSize(10, 10)
+    tick:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    tick:Hide()
+    cb.tick = tick
+    -- same shape as CheckButton so the rest of the file reads like before
+    function cb:SetChecked(on)
+        self.checked = on and true or false
+        self.tick:SetShown(self.checked)
+    end
+    function cb:GetChecked()
+        return self.checked
+    end
+    cb:SetScript("OnClick", function(self)
+        self:SetChecked(not self.checked)
+        onClick(self)
+    end)
+    cb:SetScript("OnDisable", function(self)
+        self:SetBackdropBorderColor(0.25, 0.25, 0.28, 1)
+        self.tick:SetColorTexture(0.4, 0.4, 0.4)
+    end)
+    cb:SetScript("OnEnable", function(self)
+        self:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
+        self.tick:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    end)
     return cb
 end
 
@@ -73,7 +104,7 @@ local function NewSlider(parent, min, max, step)
     track:SetPoint("LEFT")
     track:SetPoint("RIGHT")
     track:SetHeight(6)
-    track:SetColorTexture(0.1, 0.1, 0.1, 0.9)
+    track:SetColorTexture(0.1, 0.1, 0.13, 1)
 
     local fill = slider:CreateTexture(nil, "ARTWORK")
     fill:SetPoint("LEFT", track, "LEFT", 0, 0)
@@ -81,29 +112,69 @@ local function NewSlider(parent, min, max, step)
     fill:SetColorTexture(1, 1, 1, 1)
     Tint(fill, COLORS.accent)
 
-    slider:SetThumbTexture("Interface/Buttons/UI-SliderBar-Button-Horizontal")
-    slider:GetThumbTexture():SetSize(14, 20)
+    slider:SetThumbTexture(WHITE)
+    local thumb = slider:GetThumbTexture()
+    thumb:SetSize(10, 16)
+    thumb:SetVertexColor(0.7, 0.7, 0.7)
 
     return slider, fill
 end
 
 local function NewButton(parent, width, text, onClick, tooltipLines)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(width, 22)
-    b:SetText(text)
-    b:SetScript("OnClick", onClick)
-    if tooltipLines then
-        b:SetScript("OnEnter", function(self)
+    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    b:SetSize(width, 24)
+    b:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    fs:SetPoint("CENTER", 0, -1)
+    fs:SetText(text)
+    b.text = fs
+    local function paint(self)
+        if self.pressed then
+            self:SetBackdropColor(0.1, 0.1, 0.13, 1)
+        elseif self.hover then
+            self:SetBackdropColor(0.25, 0.25, 0.31, 1)
+        else
+            self:SetBackdropColor(0.16, 0.16, 0.2, 1)
+        end
+        if self.selected then
+            self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+        else
+            self:SetBackdropBorderColor(0, 0, 0, 1)
+        end
+        fs:SetPoint("CENTER", 0, self.pressed and -2 or -1)
+    end
+    paint(b)
+    function b:SetSelected(on)
+        self.selected = on
+        paint(self)
+    end
+    b:SetScript("OnEnter", function(self)
+        self.hover = true
+        paint(self)
+        if tooltipLines then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             for _, line in ipairs(tooltipLines) do
                 GameTooltip:AddLine(line, 1, 1, 1)
             end
             GameTooltip:Show()
-        end)
-        b:SetScript("OnLeave", function()
+        end
+    end)
+    b:SetScript("OnLeave", function(self)
+        self.hover = false
+        paint(self)
+        if tooltipLines then
             GameTooltip:Hide()
-        end)
-    end
+        end
+    end)
+    b:SetScript("OnMouseDown", function(self)
+        self.pressed = true
+        paint(self)
+    end)
+    b:SetScript("OnMouseUp", function(self)
+        self.pressed = false
+        paint(self)
+    end)
+    b:SetScript("OnClick", onClick)
     return b
 end
 
@@ -154,13 +225,13 @@ local function RefreshRow(i)
         row.slider:Disable()
         row.value:SetText("Muted")
         Tint(row.value, COLORS.red)
-        Tint(row.label, COLORS.dim)
+        Tint(row.label, COLORS.disabled)
         Tint(row.fill, COLORS.redDark)
     else
         row.slider:Enable()
         row.value:SetText((c.volume or 100) .. "%")
         Tint(row.value, COLORS.white)
-        Tint(row.label, COLORS.gold)
+        Tint(row.label, COLORS.label)
         Tint(row.fill, COLORS.accent)
     end
 end
@@ -182,7 +253,7 @@ local function RefreshNumChannelsRow()
     ncRow.slider:Enable()
     ncRow.value:SetText(tostring(n))
     Tint(ncRow.value, COLORS.white)
-    Tint(ncRow.label, COLORS.gold)
+    Tint(ncRow.label, COLORS.label)
     Tint(ncRow.fill, COLORS.accent)
 end
 
@@ -197,19 +268,16 @@ function W:RefreshStatus()
         local live = SS.Context:Current()
         local used = SS.Context:Resolve(live)
         local liveCtx, usedCtx = SS.CONTEXT_BY_KEY[live], SS.CONTEXT_BY_KEY[used]
-        local text = "You are in: |cff66ccff" .. (liveCtx and liveCtx.label or live) .. "|r"
+        local text = "You are in: |cffffd100" .. (liveCtx and liveCtx.label or live) .. "|r"
         if usedCtx and used ~= live then
-            text = text .. "  (using |cff66ccff" .. usedCtx.label .. "|r settings)"
+            text = text .. "  (using |cffffd100" .. usedCtx.label .. "|r settings)"
         end
         statusFS:SetText(text)
     end
 
     for _, tab in ipairs(tabs) do
-        local fs = tab:GetFontString()
-        if fs then
-            local inForce = SS.db.enabled and tab.key == SS.Context:Resolve(SS.Context:Current())
-            Tint(fs, inForce and COLORS.green or COLORS.gold)
-        end
+        local inForce = SS.db.enabled and tab.key == SS.Context:Resolve(SS.Context:Current())
+        Tint(tab.text, inForce and COLORS.green or COLORS.white)
     end
 end
 
@@ -300,11 +368,7 @@ function W:Refresh()
     local isCopy = selected == "copy"
 
     for _, tab in ipairs(tabs) do
-        if tab.key == selected then
-            tab:LockHighlight()
-        else
-            tab:UnlockHighlight()
-        end
+        tab:SetSelected(tab.key == selected)
     end
 
     for _, row in ipairs(rows) do
@@ -337,7 +401,7 @@ function W:Refresh()
         else
             overrideCB:Hide()
             overrideFS:SetText("Always applied.")
-            Tint(overrideFS, COLORS.dim)
+            Tint(overrideFS, COLORS.disabled)
         end
 
         -- Grey out the sliders when an override context is switched off: its values
@@ -383,8 +447,7 @@ local function BuildTabs()
             selected = entry.key
             W:Refresh()
         end)
-        tab:SetHeight(TAB_H)
-        tab:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + (i - 1) * (TAB_W + TAB_GAP), -(TITLE_H + 8))
+        tab:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + (i - 1) * (TAB_W + TAB_GAP), -TABS_Y)
         tab.key = entry.key
         tabs[i] = tab
     end
@@ -434,7 +497,7 @@ local function BuildRow(i, ch, topOffset)
     row.mute = mute
 
     local muteFS = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    muteFS:SetPoint("LEFT", mute, "RIGHT", 2, 0)
+    muteFS:SetPoint("LEFT", mute, "RIGHT", 6, 0)
     muteFS:SetText("Mute")
 
     slider:SetScript("OnValueChanged", function(_, v)
@@ -516,57 +579,42 @@ function W:Build()
     frame:SetFrameStrata("MEDIUM")
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
-    frame:SetBackdrop({
-        bgFile = "Interface/Buttons/WHITE8x8",
-        edgeFile = "Interface/Buttons/WHITE8x8",
-        edgeSize = 1,
-    })
-    frame:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
-    frame:SetBackdropBorderColor(0.25, 0.25, 0.25, 1)
-
-    -- Title bar (drag handle)
-    local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
-    titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -1)
-    titleBar:SetHeight(TITLE_H - 2)
-    titleBar:EnableMouse(true)
-    titleBar:RegisterForDrag("LeftButton")
-    titleBar:SetScript("OnDragStart", function()
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function()
         frame:StartMoving()
     end)
-    titleBar:SetScript("OnDragStop", function()
+    frame:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
         SavePos()
     end)
+    frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    frame:SetBackdropColor(0.06, 0.06, 0.08, 0.97)
+    frame:SetBackdropBorderColor(0, 0, 0, 1)
 
-    local titleBg = titleBar:CreateTexture(nil, "BACKGROUND")
-    titleBg:SetAllPoints()
-    titleBg:SetColorTexture(0.14, 0.14, 0.14, 1)
-
-    local titleFS = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    titleFS:SetPoint("LEFT", titleBar, "LEFT", 8, 0)
+    local titleFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleFS:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -16)
     titleFS:SetText("SoundScaper")
+    Tint(titleFS, COLORS.accent)
 
-    local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    closeBtn:SetSize(22, 22)
-    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 0)
-    closeBtn:SetScript("OnClick", function()
+    local closeBtn = NewButton(frame, 24, "X", function()
         W:Hide()
     end)
+    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -12, -12)
+
+    local divider = frame:CreateTexture(nil, "ARTWORK")
+    divider:SetHeight(1)
+    divider:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -HEADER_H)
+    divider:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -HEADER_H)
+    divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.25)
 
     BuildTabs()
 
-    local sep = frame:CreateTexture(nil, "ARTWORK")
-    sep:SetHeight(1)
-    sep:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(TITLE_H + 8 + TAB_H + 8))
-    sep:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -(TITLE_H + 8 + TAB_H + 8))
-    sep:SetColorTexture(0.3, 0.3, 0.3, 0.8)
-
     headerFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    headerFS:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(TITLE_H + 8 + TAB_H + 16))
+    headerFS:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(TABS_Y + TAB_H + 16))
 
     descFS = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    descFS:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(TITLE_H + 8 + TAB_H + 34))
+    descFS:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(TABS_Y + TAB_H + 34))
     descFS:SetWidth(WIN_W - PAD * 2)
     descFS:SetJustifyH("LEFT")
 
@@ -581,11 +629,11 @@ function W:Build()
             SS.Context:Apply()
         end
     end)
-    overrideCB:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD - 3, -OVERRIDE_Y)
+    overrideCB:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -OVERRIDE_Y)
 
     overrideFS = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    overrideFS:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 22, -(OVERRIDE_Y + 5))
-    overrideFS:SetWidth(WIN_W - PAD * 2 - 22)
+    overrideFS:SetPoint("LEFT", overrideCB, "RIGHT", 10, 0)
+    overrideFS:SetWidth(WIN_W - PAD * 2 - 28)
     overrideFS:SetJustifyH("LEFT")
 
     for i, ch in ipairs(SS.CHANNELS) do
@@ -602,10 +650,10 @@ function W:Build()
     enableCB = NewCheck(frame, function(self)
         SS.SetEnabled(self:GetChecked() and true or false)
     end)
-    enableCB:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD - 3, PAD)
+    enableCB:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, PAD)
 
     local enableFS = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    enableFS:SetPoint("LEFT", enableCB, "RIGHT", 2, 0)
+    enableFS:SetPoint("LEFT", enableCB, "RIGHT", 10, 0)
     enableFS:SetText("Enabled")
 
     applyBtn = NewButton(frame, 80, "Apply Now", function()
