@@ -1,7 +1,7 @@
 ## Interface: 120007
 ## Title: QoLify: SoundScaper
 ## Notes: Per-context sound levels. Volume and mute per audio channel for outdoors, dungeons, Mythic+, raids and raid bosses.
-## Version: 1.2.0
+## Version: 1.3.0-alpha.1
 ## Author: Rothirr
 ## IconTexture: Interface\Icons\INV_Misc_Bell_01
 ## LoadOnDemand: 1

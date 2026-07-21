@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0-alpha.1
+- New flat look for the window, matching the rest of QoLify: dark panel, gold
+  accents, flat buttons and checkboxes instead of the stock Blizzard ones. Same
+  controls and layout otherwise. The window can now be dragged from anywhere on
+  its background, not only the title.
+
 ## 1.2.0
 - Each section now also stores the sound channel count (the game's "Sound Channels"
   setting, how many sounds play at once). It gets its own row in the window and is

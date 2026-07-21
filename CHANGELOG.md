@@ -20,7 +20,7 @@
   checkboxes. The main page lists every module with live status, and modules
   unticked in WoW's own AddOn list are respected (shown as such, never
   force-loaded).
-- SoundScaper module: the standalone SoundScaper (v1.2.0) as a module, same code
+- SoundScaper module: the standalone SoundScaper (v1.3.0) as a module, same code
   and SavedVariables. Stands by while the standalone addon is active, and takes
   over with the same settings once it is removed. `/ss` opens the window.
 - Decor Spendwatch module: the standalone DecorSpendwatch (v1.1.0) as a module,

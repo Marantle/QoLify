@@ -7,7 +7,7 @@ local ADDON, SS = ...
 -- builds share. Both use the same SoundScaperDB global, so settings follow
 -- the user between them.
 
-SS.VERSION = "1.2.0"
+SS.VERSION = "1.3.0-alpha.1"
 
 local PREFIX = "|cff66ccffSoundScaper|r"
 
