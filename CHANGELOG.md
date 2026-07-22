@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.0
+- First stable release. Same feature set as 0.1.0.
+
 ## 0.1.0
 - Initial release: modular QoL collection core.
 - Small quality-of-life tweaks live on the main settings page with per-feature
