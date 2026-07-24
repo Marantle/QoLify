@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+- The Decor Spendwatch module is now QoLify: Decor, carrying Decor Tools 2.0.0
+  with the new decor shopping cart (its own changelog has the details). Settings
+  and the module enable flag move over on their own. A small "settings
+  carryover" helper addon ships alongside for a few releases so existing data
+  finds its way into the renamed module, just leave it enabled.
+- SoundScaper module 1.3.0: the window got the flat QoLify look.
+- Module windows now share one layer and the clicked one comes to the front.
+
 ## 1.0.0
 - First stable release. Same feature set as 0.1.0.
 

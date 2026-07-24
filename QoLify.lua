@@ -1,6 +1,6 @@
 local ADDON, QLF = ...
 
-QLF.VERSION = "1.0.0"
+QLF.VERSION = "1.1.0"
 
 -- Public handle for module sub-addons (RegisterModuleOptions etc.)
 QoLify = QLF

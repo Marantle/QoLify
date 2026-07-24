@@ -8,7 +8,7 @@ local ADDON, DCR = ... -- luacheck: no unused
 -- file in WTF, and both builds use the same DecorSpendwatchDB global, so
 -- settings follow the user between them.
 
-DCR.VERSION = "2.0.0-alpha.1"
+DCR.VERSION = "2.0.0"
 
 local GOLD = 10000 -- copper per gold
 
