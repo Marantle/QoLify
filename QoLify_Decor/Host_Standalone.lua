@@ -1,4 +1,4 @@
-local ADDON, DSW = ...
+local ADDON, DCR = ...
 
 -- Standalone-build host, listed only in DecorSpendwatch.toc (which is inert
 -- in a QoLify install: WoW only reads the .toc matching the folder name).
@@ -10,16 +10,19 @@ f:RegisterEvent("ADDON_LOADED")
 f:SetScript("OnEvent", function(self, _, name)
     if name == ADDON then
         self:UnregisterEvent("ADDON_LOADED")
-        DSW.InitCore()
+        DCR.InitCore()
     end
 end)
 
 SLASH_DSW1 = "/dsw"
-SlashCmdList["DSW"] = DSW.HandleSlash
+SlashCmdList["DSW"] = DCR.HandleSlash
+SLASH_CART1 = "/cart"
+SlashCmdList["CART"] = DCR.HandleCartSlash
 
 -- The AddOn compartment entry (## AddonCompartmentFunc in the .toc). Lives
--- here rather than in the shared Settings.lua so the module build never
--- defines the global, which would clobber the standalone's while standing by.
+-- here rather than in a shared file so the module build never defines the
+-- global, which would clobber the standalone's while standing by. Opens the
+-- cart, the spend tracker stays on /dsw and the minimap right-click.
 function DecorSpendwatch_OnAddonCompartmentClick()
-    DSW.OpenSettings()
+    DCR.OpenCart()
 end

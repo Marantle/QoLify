@@ -19,11 +19,14 @@ globals = {
     "SLASH_QLFSS2",
     "SLASH_SS1",
     "SLASH_SS2",
-    -- QoLify_DecorSpendwatch (same pattern, plus the standalone's addon
-    -- compartment entry point)
+    -- QoLify_Decor (same pattern, plus the standalone's addon compartment
+    -- entry point; the SV global and standalone folder keep the old
+    -- DecorSpendwatch name so nobody's data resets)
     "DecorSpendwatchDB",
     "SLASH_QLFDSW1",
     "SLASH_DSW1",
+    "SLASH_QLFCART1",
+    "SLASH_CART1",
     "DecorSpendwatch_OnAddonCompartmentClick",
     -- The Party Keys QoL feature registers its own popup dialog
     "StaticPopupDialogs",
@@ -100,13 +103,29 @@ read_globals = {
     "UnitFullName",
     "GetNormalizedRealmName",
     "GetNumGroupMembers",
-    -- DecorSpendwatch module
+    -- Decor module
     "GetCoinTextureString",
     "C_Item",
     "C_MerchantFrame",
     "GetMerchantItemLink",
+    "GetMerchantNumItems",
+    "GetMerchantItemCostInfo",
+    "GetMerchantItemCostItem",
+    "BuyMerchantItem",
+    "GetMoney",
+    "IsShiftKeyDown",
+    "IsControlKeyDown",
+    "MenuUtil",
     "MerchantFrame",
     "MERCHANDISE_ITEMS_PER_PAGE",
     "TooltipDataProcessor",
     "UISpecialFrames",
+    "C_HousingCatalog",
+    "C_HousingDecor",
+    "C_CurrencyInfo",
+    "GetCursorInfo",
+    "ClearCursor",
+    "ScrollUtil",
+    "HouseEditorFrame",
+    "HousingDashboardFrame",
 }

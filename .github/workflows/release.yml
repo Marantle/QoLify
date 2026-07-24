@@ -47,7 +47,7 @@ jobs:
               ;;
             decorspendwatch-v*)
               NAME=DecorSpendwatch
-              TOC=QoLify_DecorSpendwatch/DecorSpendwatch.toc
+              TOC=QoLify_Decor/DecorSpendwatch.toc
               TARGET=release-decorspendwatch
               VERSION="${TAG#decorspendwatch-v}"
               ;;

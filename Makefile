@@ -35,7 +35,7 @@ SS_VERSION     := $(shell grep "^\#\# Version:" $(SS_TOC) | awk '{print $$3}')
 SS_PROJECT     := $(shell grep "^\#\# X-Curse-Project-ID:" $(SS_TOC) | awk '{print $$3}')
 SS_FILES       := $(call toc_lua,$(SS_TOC))
 
-DSW_TOC        := $(ADDON)_DecorSpendwatch/DecorSpendwatch.toc
+DSW_TOC        := $(ADDON)_Decor/DecorSpendwatch.toc
 DSW_VERSION    := $(shell grep "^\#\# Version:" $(DSW_TOC) | awk '{print $$3}')
 DSW_PROJECT    := $(shell grep "^\#\# X-Curse-Project-ID:" $(DSW_TOC) | awk '{print $$3}')
 DSW_FILES      := $(call toc_lua,$(DSW_TOC))
@@ -100,26 +100,28 @@ package-min:
 	@rm -rf dist
 	@echo "Built $(ADDON)-$(VERSION)-min.zip"
 
-# Stages a standalone build from a module folder. The zip contains a single
-# folder named after the standalone (that name keys the SavedVariables file
-# in WTF, so it must never change) holding only the files its standalone
-# .toc lists, plus that .toc itself.
+# Stages a standalone build from a module folder (arg 4, no longer always
+# $(ADDON)_$(1) since the Decor module folder and its standalone kept
+# different names). The zip contains a single folder named after the
+# standalone (that name keys the SavedVariables file in WTF, so it must
+# never change) holding only the files its standalone .toc lists, plus that
+# .toc itself.
 define PACKAGE_STANDALONE
 	@echo "Packaging $(1) v$(2)..."
 	@rm -f $(1)-*.zip
 	@rm -rf dist
 	@mkdir -p dist/$(1)
-	@cd $(ADDON)_$(1) && cp --parents $(3) $(1).toc ../dist/$(1)/
+	@cd $(4) && cp --parents $(3) $(1).toc ../dist/$(1)/
 	@pwsh -NoProfile -Command "Compress-Archive -Path 'dist/$(1)' -DestinationPath '$(1)-$(2).zip'"
 	@rm -rf dist
 	@echo "Built $(1)-$(2).zip"
 endef
 
 package-soundscaper:
-	$(call PACKAGE_STANDALONE,SoundScaper,$(SS_VERSION),$(SS_FILES))
+	$(call PACKAGE_STANDALONE,SoundScaper,$(SS_VERSION),$(SS_FILES),$(ADDON)_SoundScaper)
 
 package-decorspendwatch:
-	$(call PACKAGE_STANDALONE,DecorSpendwatch,$(DSW_VERSION),$(DSW_FILES))
+	$(call PACKAGE_STANDALONE,DecorSpendwatch,$(DSW_VERSION),$(DSW_FILES),$(ADDON)_Decor)
 
 # Shared upload recipe. Arguments: zip file, CurseForge project ID,
 # changelog path. The project ID comes from the matching .toc, so each
@@ -151,7 +153,7 @@ release-soundscaper: package-soundscaper
 	$(call CURSE_UPLOAD,SoundScaper-$(SS_VERSION).zip,$(SS_PROJECT),$(ADDON)_SoundScaper/CHANGELOG.md)
 
 release-decorspendwatch: package-decorspendwatch
-	$(call CURSE_UPLOAD,DecorSpendwatch-$(DSW_VERSION).zip,$(DSW_PROJECT),$(ADDON)_DecorSpendwatch/CHANGELOG.md)
+	$(call CURSE_UPLOAD,DecorSpendwatch-$(DSW_VERSION).zip,$(DSW_PROJECT),$(ADDON)_Decor/CHANGELOG.md)
 
 # Convenience for the rare case where the core and both standalones all
 # changed. Day to day, release each artifact on its own when it changes.

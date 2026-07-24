@@ -2,54 +2,25 @@ local ADDON, QLF = ...
 
 -- Minimap button. Left-click opens a small picker window listing the loaded
 -- modules to open one (or the settings directly while no module is loaded).
--- Right-click always opens the settings. Hand-rolled, no LibDBIcon.
--- The position persists as an angle in QoLifyDB.minimap.angle.
+-- Right-click always opens the settings. Goes through LibDBIcon so button
+-- collector addons can manage it.
 
-local BUTTON_RADIUS = 80
-
-local btn = CreateFrame("Button", "QoLifyMinimapButton", Minimap)
-btn:SetSize(31, 31)
-btn:SetFrameLevel(Minimap:GetFrameLevel() + 8)
-btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-btn:RegisterForDrag("LeftButton")
-btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-
-local border = btn:CreateTexture(nil, "OVERLAY")
-border:SetSize(53, 53)
-border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-border:SetPoint("TOPLEFT")
-
-local icon = btn:CreateTexture(nil, "BACKGROUND")
-icon:SetSize(20, 20)
-icon:SetTexture("Interface\\Icons\\INV_Misc_Gift_01")
-icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-icon:SetPoint("TOPLEFT", 7, -5)
-
-local function Angle()
-    local db = QoLifyDB and QoLifyDB.minimap
-    return (db and db.angle) or 220
-end
-
-local function ApplyPosition()
-    local rad = math.rad(Angle())
-    btn:ClearAllPoints()
-    btn:SetPoint("CENTER", Minimap, "CENTER", math.cos(rad) * BUTTON_RADIUS, math.sin(rad) * BUTTON_RADIUS)
-end
-
-local function OnDragUpdate()
-    local mx, my = Minimap:GetCenter()
-    local cx, cy = GetCursorPosition()
-    local scale = Minimap:GetEffectiveScale()
-    QoLifyDB.minimap.angle = math.deg(math.atan2(cy / scale - my, cx / scale - mx)) % 360
-    ApplyPosition()
-end
-
-btn:SetScript("OnDragStart", function(self)
-    self:SetScript("OnUpdate", OnDragUpdate)
-end)
-btn:SetScript("OnDragStop", function(self)
-    self:SetScript("OnUpdate", nil)
-end)
+local broker = LibStub("LibDataBroker-1.1"):NewDataObject(ADDON, {
+    type = "launcher",
+    icon = "Interface\\Icons\\INV_Misc_Gift_01",
+    OnClick = function(_, mouse)
+        if mouse == "RightButton" then
+            QLF.OpenSettings()
+        else
+            QLF.ToggleModulePicker()
+        end
+    end,
+    OnTooltipShow = function(tt)
+        tt:SetText(ADDON)
+        tt:AddLine("Click: open a module.", 1, 1, 1)
+        tt:AddLine("Right-click: open the settings.", 1, 1, 1)
+    end,
+})
 -- The modules the picker offers: enabled and actually loaded this session.
 -- "Active until reload" modules are left out. The user just disabled them.
 local function LoadedModules()
@@ -197,28 +168,15 @@ function QLF.ToggleModulePicker()
     picker:Show()
 end
 
-btn:SetScript("OnClick", function(_, mouse)
-    if mouse == "RightButton" then
-        QLF.OpenSettings()
-        return
-    end
-    QLF.ToggleModulePicker()
-end)
-btn:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:SetText(ADDON)
-    GameTooltip:AddLine("Click: open a module.", 1, 1, 1)
-    GameTooltip:AddLine("Right-click: open the settings.", 1, 1, 1)
-    GameTooltip:Show()
-end)
-btn:SetScript("OnLeave", function()
-    GameTooltip:Hide()
-end)
-
-ApplyPosition() -- default spot until the DB is loaded
-
 -- Called by the bootstrap once QoLifyDB is merged.
 function QLF.Minimap_Init()
     QoLifyDB.minimap = QoLifyDB.minimap or {}
-    ApplyPosition()
+    local db = QoLifyDB.minimap
+    -- The pre-LibDBIcon button stored its spot in db.angle, same unit
+    -- (degrees), so existing buttons keep their place.
+    if db.angle then
+        db.minimapPos = db.minimapPos or db.angle
+        db.angle = nil
+    end
+    LibStub("LibDBIcon-1.0"):Register(ADDON, broker, db)
 end

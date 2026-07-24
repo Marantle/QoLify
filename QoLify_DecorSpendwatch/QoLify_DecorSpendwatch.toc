@@ -1,16 +1,9 @@
 ## Interface: 120007
-## Title: QoLify: Decor Spendwatch
-## Notes: Set a gold budget for housing decor and get warned before you blow past it.
-## Version: 1.1.0
+## Title: QoLify: Decor settings carryover
+## Notes: Keeps your Decor Spendwatch settings while the module moves to QoLify: Decor. Safe to remove after logging in once.
+## Version: 2.0.0-alpha.1
 ## Author: Rothirr
-## IconTexture: Interface\Icons\INV_Misc_Coin_01
-## LoadOnDemand: 1
 ## RequiredDeps: QoLify
-## X-QoLify-Module: 1
-## X-QoLify-SharedSV: DecorSpendwatchDB
 ## SavedVariables: DecorSpendwatchDB
 
-DecorSpendwatch.lua
-Settings.lua
-Merchant.lua
-Host_Module.lua
+Carryover.lua

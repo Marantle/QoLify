@@ -1,0 +1,20 @@
+## Interface: 120007
+## Title: QoLify: Decor
+## Notes: Housing decor tools: a shopping cart you fill while decorating, plus the gold spend watcher.
+## Version: 2.0.0-alpha.1
+## Author: Rothirr
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
+## LoadOnDemand: 1
+## RequiredDeps: QoLify
+## X-QoLify-Module: 1
+## X-QoLify-SharedSV: DecorSpendwatchDB
+## SavedVariables: DecorSpendwatchDB
+
+Decor.lua
+Widgets.lua
+Spendwatch.lua
+Cart.lua
+CartWindow.lua
+Catalog.lua
+Merchant.lua
+Host_Module.lua

@@ -1,6 +1,6 @@
 ## Interface: 120007
-## Title: QoLify: Standalone Decor Spendwatch
-## Notes: Set a gold budget for housing decor and get warned before you blow past it.
+## Title: Decor Tools
+## Notes: Housing decor tools: a shopping cart you fill while decorating, plus the gold spend watcher.
 ## Category-enUS: Housing
 ## Category-deDE: Behausung
 ## Category-frFR: Logement
@@ -12,15 +12,19 @@
 ## Category-zhTW: 房屋
 ## Category-ptBR: Habitação
 ## Category-itIT: Alloggio
-## Version: 1.1.0
+## Version: 2.0.0-alpha.1
 ## Author: Rothirr
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## AddonCompartmentFunc: DecorSpendwatch_OnAddonCompartmentClick
 ## X-Curse-Project-ID: 1588136
 ## SavedVariables: DecorSpendwatchDB
 
-DecorSpendwatch.lua
-Settings.lua
+Decor.lua
+Widgets.lua
+Spendwatch.lua
+Cart.lua
+CartWindow.lua
+Catalog.lua
 Merchant.lua
 Minimap.lua
 Host_Standalone.lua

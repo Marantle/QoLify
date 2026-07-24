@@ -1,0 +1,318 @@
+local _, DCR = ...
+
+-- Shopping cart data. The cart is a list of catalog decor entries keyed by
+-- recordID, each with a planned quantity. Merchant.lua matches vendor items
+-- against it by itemID, so a lookup table is kept alongside and rebuilt on
+-- every change. No UI here, the window lives in CartWindow.lua.
+
+local byItemID = {}
+local hasItems = false
+local unresolved = 0 -- entries with no known itemID
+
+local function items()
+    local cart = DCR.CartDB()
+    return cart and cart.items
+end
+
+-- The catalog's sourceText lists each vendor's cost inline: gold as
+-- "100|TInterface\MoneyFrame\UI-GoldIcon.blp:0|t", currencies as
+-- "8|Hcurrency:3405|h|T<icon>:0|t|h" (verified by byte dump). Parsing the
+-- first cost gives a usable price before any vendor was ever visited, and
+-- the currency link even carries the id for a proper name and icon. A real
+-- vendor scan later overwrites these estimates.
+local function parseSourceCost(sourceText)
+    if not sourceText then
+        return nil
+    end
+    -- upper() keeps positions, so finds on it line up with the original
+    local gPos = sourceText:upper():find("%d[%d%.,]*|T[^|]*MONEYFRAME")
+    local cPos = sourceText:find("%d[%d%.,]*|[Hh]currency:%d+")
+    local start = gPos and cPos and math.min(gPos, cPos) or gPos or cPos
+    if not start then
+        return nil
+    end
+    -- one vendor's cost sits on one |n line, and an item can charge gold
+    -- and currencies at once, so the whole line gets parsed
+    local stop = sourceText:find("|n", start, true)
+    local line = sourceText:sub(start, stop and (stop - 1) or -1)
+    local rec
+    local gAmt = line:upper():match("(%d[%d%.,]*)|T[^|]*MONEYFRAME")
+    if gAmt then
+        local n = tonumber((gAmt:gsub("[,%.]", "")))
+        if n and n > 0 then
+            rec = { price = n * 10000, estimated = true }
+        end
+    end
+    for amt, id in line:gmatch("(%d[%d%.,]*)|[Hh]currency:(%d+)") do
+        local n = tonumber((amt:gsub("[,%.]", "")))
+        if n and n > 0 then
+            rec = rec or { estimated = true }
+            rec.costs = rec.costs or {}
+            id = tonumber(id)
+            local cur = C_CurrencyInfo.GetCurrencyInfo(id)
+            table.insert(rec.costs, {
+                icon = cur and cur.iconFileID,
+                label = cur and cur.name,
+                amount = n,
+                currencyID = id,
+            })
+        end
+    end
+    return rec
+end
+
+-- Wipes and refills rather than replacing, so Merchant.lua never holds a
+-- stale reference. Entries missing their itemID get one more catalog query
+-- here, since catalog data can be incomplete right after login.
+function DCR.RebuildCartLookup()
+    wipe(byItemID)
+    hasItems = false
+    unresolved = 0
+    local list = items()
+    if not list then
+        return
+    end
+    local priceDB = DCR.CartDB().prices
+    for recordID, entry in pairs(list) do
+        hasItems = true
+        -- One catalog query covers the gaps: a missing itemID, a missing
+        -- price, or a price that is still just an estimate (estimates get
+        -- re-parsed so parser fixes reach old records, only vendor-confirmed
+        -- prices are final). Data can be cold (nil), then this retries on
+        -- the next rebuild.
+        local rec = entry.itemID and priceDB[entry.itemID]
+        if not entry.itemID or not rec or rec.estimated then
+            local info = C_HousingCatalog.GetCatalogEntryInfo({
+                recordID = recordID,
+                entryType = Enum.HousingCatalogEntryType.Decor,
+            })
+            if info then
+                if not entry.itemID then
+                    entry.itemID = info.itemID
+                    entry.icon = entry.icon or info.iconTexture
+                    entry.iconAtlas = entry.iconAtlas or info.iconAtlas
+                end
+                if entry.itemID then
+                    rec = priceDB[entry.itemID]
+                    if not rec or rec.estimated then
+                        priceDB[entry.itemID] = parseSourceCost(info.sourceText) or rec
+                    end
+                end
+            end
+        end
+        if entry.itemID then
+            byItemID[entry.itemID] = entry
+            -- prices lived on the entries for a short while, move them over
+            if entry.price or entry.costs then
+                priceDB[entry.itemID] = priceDB[entry.itemID] or { price = entry.price, costs = entry.costs }
+                entry.price, entry.costs = nil, nil
+            end
+        else
+            unresolved = unresolved + 1
+        end
+    end
+end
+
+-- The learned price of an item, if any vendor selling it was ever visited.
+function DCR.PriceFor(itemID)
+    local cart = DCR.CartDB()
+    return cart and itemID and cart.prices[itemID] or nil
+end
+
+-- Catalog data is loaded lazily and GetCatalogEntryInfo returns nil while it
+-- is cold, which leaves older cart entries without a price estimate until
+-- some catalog UI happens to be opened. A one-shot background search (the
+-- same searcher Blizzard's catalog uses) warms the data at login, and the
+-- results callback reruns the rebuild to fill the gaps.
+local searcher
+
+function DCR.WarmCatalog()
+    local cart = DCR.CartDB()
+    if not cart or searcher or not C_HousingCatalog.CreateCatalogSearcher then
+        return
+    end
+    local needs = false
+    for _, entry in pairs(cart.items) do
+        if not (entry.itemID and cart.prices[entry.itemID]) then
+            needs = true
+            break
+        end
+    end
+    if not needs then
+        return
+    end
+    searcher = C_HousingCatalog.CreateCatalogSearcher()
+    searcher:SetResultsUpdatedCallback(function()
+        searcher = nil
+        DCR.RebuildCartLookup()
+        if DCR.RefreshCartUI then
+            DCR.RefreshCartUI()
+        end
+    end)
+    searcher:RunSearch()
+end
+
+function DCR.CartHasItems()
+    return hasItems
+end
+
+-- itemInfo is an itemID or link. Matching by itemID covers the common case,
+-- but catalog entries do not always name their item, so a miss falls back
+-- to resolving the item to its catalog recordID, which every entry has. A
+-- hit patches the entry so the next match is a plain lookup again.
+function DCR.CartEntryForItem(itemInfo)
+    if not (hasItems and itemInfo) then
+        return nil
+    end
+    local itemID = (C_Item.GetItemInfoInstant(itemInfo))
+    local entry = itemID and byItemID[itemID]
+    if entry or unresolved == 0 then
+        return entry
+    end
+    local info = C_HousingCatalog.GetCatalogEntryInfoByItem(itemInfo)
+    local list = items()
+    entry = info and list and list[info.recordID]
+    if entry and itemID then
+        entry.itemID = itemID
+        DCR.RebuildCartLookup()
+    end
+    return entry
+end
+
+function DCR.CartItems()
+    return items()
+end
+
+local function changed()
+    DCR.RebuildCartLookup()
+    if DCR.RefreshCartUI then
+        DCR.RefreshCartUI()
+    end
+end
+
+-- info is a HousingCatalogEntryInfo (or the synthesized fallback from
+-- ResolveDecor below). Adding the same decor again just bumps the count.
+function DCR.AddCartEntry(info, count)
+    local list = items()
+    if not (list and info and info.recordID) then
+        return nil
+    end
+    count = count or 1
+    local entry = list[info.recordID]
+    if entry then
+        entry.qty = entry.qty + count
+    else
+        entry = {
+            recordID = info.recordID,
+            name = info.name,
+            itemID = info.itemID,
+            icon = info.iconTexture,
+            iconAtlas = info.iconAtlas,
+            qty = count,
+            addedAt = GetServerTime(),
+        }
+        list[info.recordID] = entry
+    end
+    -- The add already holds the full catalog info, so the estimate from its
+    -- sourceText is free. changed() would only redo the catalog query.
+    local cart = DCR.CartDB()
+    if info.itemID then
+        local rec = cart.prices[info.itemID]
+        if not rec or rec.estimated then
+            cart.prices[info.itemID] = parseSourceCost(info.sourceText) or rec
+        end
+    end
+    changed()
+    -- Adding while standing at a vendor picks the price up right away.
+    DCR.ScanMerchantPrices()
+    return entry
+end
+
+function DCR.SetCartQty(recordID, qty)
+    local list = items()
+    local entry = list and list[recordID]
+    if entry then
+        entry.qty = math.max(1, qty or 1)
+        changed()
+    end
+end
+
+function DCR.RemoveCartEntry(recordID)
+    local list = items()
+    if list and list[recordID] then
+        list[recordID] = nil
+        changed()
+    end
+end
+
+function DCR.ClearCart()
+    local list = items()
+    if list then
+        wipe(list)
+        changed()
+    end
+end
+
+function DCR.CartBuyMessagesOn()
+    local cart = DCR.CartDB()
+    return cart and cart.buyMessages and true or false
+end
+
+function DCR.SetCartBuyMessages(on)
+    local cart = DCR.CartDB()
+    if cart then
+        cart.buyMessages = not not on
+    end
+end
+
+-- Called from Merchant.lua when a carted item is bought. The entry drops off
+-- the list once the planned quantity is covered, which also removes the
+-- vendor tooltip line.
+function DCR.RecordCartPurchase(itemInfo, count)
+    local list = items()
+    local entry = DCR.CartEntryForItem(itemInfo)
+    if not (list and entry) then
+        return
+    end
+    entry.qty = entry.qty - (count or 1)
+    if entry.qty > 0 then
+        if DCR.RefreshCartUI then
+            DCR.RefreshCartUI()
+        end
+        return
+    end
+    list[entry.recordID] = nil
+    if DCR.CartBuyMessagesOn() then
+        DCR.Print((entry.name or "an item") .. " crossed off the shopping list.")
+    end
+    changed()
+end
+
+-- Bridges a placed decor (HousingDecorInstanceInfo from the house editor) to
+-- its catalog entry. decorID matching the catalog recordID is undocumented,
+-- so the result is only trusted when the names agree, with the decor
+-- hyperlink as the fallback route.
+function DCR.ResolveDecor(info)
+    if not (info and info.decorID) then
+        return nil
+    end
+    local entry = C_HousingCatalog.GetCatalogEntryInfo({
+        recordID = info.decorID,
+        entryType = Enum.HousingCatalogEntryType.Decor,
+    })
+    if entry and (not info.name or entry.name == info.name) then
+        return entry
+    end
+    local link = C_HousingDecor.GetDecorHyperlink(info.decorID)
+    local byItem = link and C_HousingCatalog.GetCatalogEntryInfoByItem(link)
+    if byItem then
+        return byItem
+    end
+    -- No catalog match at all. Keep the decor anyway, the lookup rebuild
+    -- retries the itemID later.
+    return {
+        recordID = info.decorID,
+        name = info.name or C_HousingDecor.GetDecorName(info.decorID),
+        iconTexture = C_HousingDecor.GetDecorIcon(info.decorID),
+    }
+end

@@ -1,8 +1,8 @@
-local _, DSW = ...
+local _, DCR = ...
 
--- Coin button on the minimap. Click opens the settings window, drag moves it
--- around the rim. The position is stored as an angle in DecorSpendwatchDB, the same
--- trick LibDBIcon uses.
+-- Coin button on the minimap. Click opens the shopping cart, right-click the
+-- spend tracker, drag moves it around the rim. The position is stored as an
+-- angle in DecorSpendwatchDB, the same trick LibDBIcon uses.
 
 local btn = CreateFrame("Button", "DecorSpendwatchMinimapButton", Minimap)
 btn:SetSize(31, 31)
@@ -51,14 +51,19 @@ btn:SetScript("OnDragStop", function(self)
     self:SetScript("OnUpdate", nil)
 end)
 
-btn:SetScript("OnClick", function()
-    DSW.OpenSettings()
+btn:SetScript("OnClick", function(_, mouseButton)
+    if mouseButton == "RightButton" then
+        DCR.OpenSettings()
+    else
+        DCR.OpenCart()
+    end
 end)
 
 btn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:AddLine("DecorSpendwatch", 1, 0.82, 0)
-    GameTooltip:AddLine("Click: open settings", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("Decor Tools", 1, 0.82, 0)
+    GameTooltip:AddLine("Click: open the shopping cart", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("Right-click: open the spend tracker", 0.8, 0.8, 0.8)
     GameTooltip:AddLine("Drag: move the button", 0.8, 0.8, 0.8)
     GameTooltip:Show()
 end)

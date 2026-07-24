@@ -22,13 +22,20 @@ which kicks in the instant a boss encounter starts. Full music out in the world,
 only in a key, everything but Master muted on a raid pull. The sync goes both ways, so
 a change made in the game's own audio options is picked up by the section you are in.
 
-**Decor Spendwatch** is a gold budget for housing decor, so you don't drop fifty
-thousand on a single rug without noticing. Pick a per-item cap and anything priced
-above it gets a red warning on its vendor tooltip. Buy it anyway and you get a note in
-chat. It also keeps a running total of what decor has cost you.
+**Decor** is a pair of tools for housing decor. The shopping cart is a wish list you
+fill while decorating: hit the + on catalog entries, or drop the piece you have
+selected in the house editor straight into the cart window. It remembers quantities and
+shows price estimates from the catalog. At a vendor, carted items get a "buy N" line on
+their tooltips that counts down as you buy, with buy buttons in the cart for whatever
+that vendor stocks. The spend watcher is the budget half: pick a per-item gold cap and
+anything priced above it gets a red warning on its vendor tooltip, buy it anyway and
+you get a note in chat, and a running total tracks what decor has cost you.
 
 Both also exist as standalone addons
 ([SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid),
-[Decor Spendwatch](https://www.curseforge.com/wow/addons/decor-spendwatch)). If you
-already run the standalone, the QoLify module stands by and lets it work. Remove the
-standalone and the module takes over with your settings intact.
+[Decor Tools](https://www.curseforge.com/wow/addons/decor-spendwatch)). If you
+already run the standalone, the QoLify module stands by and lets it work. Your settings
+copy over by themselves the first time you log out with both installed, and from then
+on removing the standalone hands everything to the module. Just don't uninstall the
+standalone before installing QoLify, since your settings would stay behind in its old
+saved variables file where the module can't reach them.

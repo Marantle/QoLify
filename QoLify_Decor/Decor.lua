@@ -1,18 +1,20 @@
-local ADDON, DSW = ... -- luacheck: no unused
+local ADDON, DCR = ... -- luacheck: no unused
 
--- Shared engine for both builds of Decor Spendwatch: the QoLify module
--- (QoLify_DecorSpendwatch.toc + Host_Module.lua) and the standalone addon
--- (DecorSpendwatch.toc + Host_Standalone.lua + Minimap.lua). Settings.lua and
--- Merchant.lua are shared too, only the hosts differ. Both builds use the
--- same DecorSpendwatchDB global, so settings follow the user between them.
+-- Shared engine for both builds of the decor tools: the QoLify module
+-- (QoLify_Decor.toc + Host_Module.lua) and the standalone addon
+-- (DecorSpendwatch.toc + Host_Standalone.lua + Minimap.lua). Everything but
+-- the hosts and the minimap button is shared. The standalone folder keeps its
+-- old DecorSpendwatch name because the folder name keys the SavedVariables
+-- file in WTF, and both builds use the same DecorSpendwatchDB global, so
+-- settings follow the user between them.
 
-DSW.VERSION = "1.1.0"
+DCR.VERSION = "2.0.0-alpha.1"
 
 local GOLD = 10000 -- copper per gold
 
 -- Default vendor tooltip warning. {cap} is swapped for the formatted gold cap.
-local DEFAULT_WARNING = "Over your DecorSpendwatch cap of {cap}"
-DSW.DEFAULT_WARNING = DEFAULT_WARNING
+local DEFAULT_WARNING = "Over your decor cap of {cap}"
+DCR.DEFAULT_WARNING = DEFAULT_WARNING
 
 local DEFAULTS = {
     capCopper = 0, -- per-item gold limit, 0 means no cap set yet
@@ -29,14 +31,14 @@ local DEFAULTS = {
 local db
 
 local function msg(text)
-    print("|cff66ccffDecorSpendwatch|r: " .. text)
+    print("|cff66ccffDecor Tools|r: " .. text)
 end
-DSW.Print = msg
+DCR.Print = msg
 
-local function money(copper)
-    return GetCoinTextureString(copper or 0)
+local function money(copper, iconHeight)
+    return GetCoinTextureString(copper or 0, iconHeight)
 end
-DSW.Money = money
+DCR.Money = money
 
 -- Turn "50000", "5g", "50k" or "1.5m" into copper. Returns nil if it can't be read.
 local function parseGold(s)
@@ -60,63 +62,63 @@ local function parseGold(s)
     end
     return math.floor(n * mult * GOLD)
 end
-DSW.ParseGold = parseGold
+DCR.ParseGold = parseGold
 
 -- Getters and setters used by the settings window and the minimap. They guard
 -- against being called before init (and keep Merchant.lua inert while the
 -- module build is in standby, db nil).
-function DSW.GetCap()
+function DCR.GetCap()
     return db and db.capCopper or 0
 end
 
-function DSW.SetCap(copper)
+function DCR.SetCap(copper)
     if db then
         db.capCopper = copper or 0
     end
-    if DSW.RefreshUI then
-        DSW.RefreshUI()
+    if DCR.RefreshUI then
+        DCR.RefreshUI()
     end
 end
 
-function DSW.GetSpent()
+function DCR.GetSpent()
     return db and db.spent or 0
 end
 
-function DSW.GetOverCount()
+function DCR.GetOverCount()
     return db and db.overCount or 0
 end
 
-function DSW.IsTracking()
+function DCR.IsTracking()
     return db and db.trackEnabled and true or false
 end
 
-function DSW.SetTracking(on)
+function DCR.SetTracking(on)
     if db then
         db.trackEnabled = not not on
     end
-    if DSW.RefreshUI then
-        DSW.RefreshUI()
+    if DCR.RefreshUI then
+        DCR.RefreshUI()
     end
 end
 
-function DSW.UsesCustomWarning()
+function DCR.UsesCustomWarning()
     return db and db.customWarning and true or false
 end
 
-function DSW.SetCustomWarning(on)
+function DCR.SetCustomWarning(on)
     if db then
         db.customWarning = not not on
     end
-    if DSW.RefreshUI then
-        DSW.RefreshUI()
+    if DCR.RefreshUI then
+        DCR.RefreshUI()
     end
 end
 
-function DSW.GetWarningText()
+function DCR.GetWarningText()
     return (db and db.warningText) or DEFAULT_WARNING
 end
 
-function DSW.SetWarningText(text)
+function DCR.SetWarningText(text)
     if db then
         text = text and text:gsub("^%s+", ""):gsub("%s+$", "")
         db.warningText = (text and text ~= "") and text or DEFAULT_WARNING
@@ -125,7 +127,7 @@ end
 
 -- The line shown on an over-cap decor tooltip. Uses the player's template when
 -- custom warnings are on; {cap} is replaced with the formatted gold amount.
-function DSW.WarningLine(capCopper)
+function DCR.WarningLine(capCopper)
     local template = DEFAULT_WARNING
     if db and db.customWarning and db.warningText and db.warningText ~= "" then
         template = db.warningText
@@ -133,39 +135,39 @@ function DSW.WarningLine(capCopper)
     return (template:gsub("{cap}", money(capCopper)))
 end
 
-function DSW.SpendMessagesOn()
+function DCR.SpendMessagesOn()
     return db and db.spendMessages and true or false
 end
 
-function DSW.SetSpendMessages(on)
+function DCR.SetSpendMessages(on)
     if db then
         db.spendMessages = not not on
     end
-    if DSW.RefreshUI then
-        DSW.RefreshUI()
+    if DCR.RefreshUI then
+        DCR.RefreshUI()
     end
 end
 
-function DSW.OverCapMessagesOn()
+function DCR.OverCapMessagesOn()
     return db and db.overCapMessages and true or false
 end
 
-function DSW.SetOverCapMessages(on)
+function DCR.SetOverCapMessages(on)
     if db then
         db.overCapMessages = not not on
     end
-    if DSW.RefreshUI then
-        DSW.RefreshUI()
+    if DCR.RefreshUI then
+        DCR.RefreshUI()
     end
 end
 
-function DSW.ResetTotals()
+function DCR.ResetTotals()
     if db then
         db.spent = 0
         db.overCount = 0
     end
-    if DSW.RefreshUI then
-        DSW.RefreshUI()
+    if DCR.RefreshUI then
+        DCR.RefreshUI()
     end
 end
 
@@ -198,7 +200,7 @@ end
 
 -- Called from Merchant.lua when a housing decor item is bought. name is the item
 -- link so it prints as the coloured, clickable name.
-function DSW.RecordDecorPurchase(copper, name)
+function DCR.RecordDecorPurchase(copper, name)
     if not db or not copper or copper <= 0 then
         return
     end
@@ -225,31 +227,60 @@ function DSW.RecordDecorPurchase(copper, name)
         end
         batchTimer = C_Timer.NewTimer(10, flushBatch)
     end
-    if DSW.RefreshUI then
-        DSW.RefreshUI()
+    if DCR.RefreshUI then
+        DCR.RefreshUI()
     end
 end
 
--- The slash command body, shared. The hosts only differ in which SLASH_ key
--- points here (the module must not claim the standalone's key).
-function DSW.HandleSlash(input)
+-- The slash command bodies, shared. The hosts only differ in which SLASH_
+-- keys point here (the module must not claim the standalone's keys). /dsw is
+-- the spend tracker, /cart is the shopping cart.
+function DCR.HandleSlash(input)
     local cmd = (input or ""):lower():match("^%s*(%S*)")
     if cmd == "version" then
-        msg("v" .. DSW.VERSION)
-    elseif DSW.OpenSettings then
-        DSW.OpenSettings()
+        msg("v" .. DCR.VERSION)
+    elseif DCR.OpenSettings then
+        DCR.OpenSettings()
     end
+end
+
+function DCR.HandleCartSlash(input)
+    local cmd = (input or ""):lower():match("^%s*(%S*)")
+    if cmd == "version" then
+        msg("v" .. DCR.VERSION)
+    elseif DCR.OpenCart then
+        DCR.OpenCart()
+    end
+end
+
+-- The shopping cart's slice of the DB. Nil until InitCore, which keeps
+-- Cart.lua inert in standby the same way db does for the tracker.
+function DCR.CartDB()
+    return db and db.cart
 end
 
 -- DB seed. Called by the host once SavedVariables are ready (and, for the
 -- module, standby ruled out). Everything above no-ops until db is assigned
 -- here, which is what keeps a standing-by module inert.
-function DSW.InitCore()
+function DCR.InitCore()
     DecorSpendwatchDB = DecorSpendwatchDB or {}
     for k, v in pairs(DEFAULTS) do
         if DecorSpendwatchDB[k] == nil then
             DecorSpendwatchDB[k] = v
         end
     end
+    -- The shallow merge above cannot seed nested tables, so the cart gets
+    -- its keys by hand.
+    local cart = DecorSpendwatchDB.cart or {}
+    DecorSpendwatchDB.cart = cart
+    cart.items = cart.items or {}
+    cart.prices = cart.prices or {} -- [itemID] = { price, costs }, learned at vendors
+    if cart.buyMessages == nil then
+        cart.buyMessages = true
+    end
     db = DecorSpendwatchDB
+    -- Arms the vendor tooltip right away, no need to open the cart first.
+    DCR.RebuildCartLookup()
+    DCR.WarmCatalog()
+    DCR.CatalogInit()
 end

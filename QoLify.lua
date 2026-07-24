@@ -29,6 +29,11 @@ f:SetScript("OnEvent", function(self, event, ...)
         -- DB exists (SavedVariables are not loaded at file scope).
         QLF.QoL_Init()
         QLF.Minimap_Init()
+        -- The Decor Spendwatch module became QoLify_Decor in 2.0. Carry the
+        -- enable flag over before the prune below drops the old key.
+        if QoLifyDB.modules["QoLify_DecorSpendwatch"] and QoLifyDB.modules["QoLify_Decor"] == nil then
+            QoLifyDB.modules["QoLify_Decor"] = true
+        end
         QLF.Modules_Scan()
         QLF.Modules_PruneStale()
         -- Pages must exist before any module loads and before the settings UI
