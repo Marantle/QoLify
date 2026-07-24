@@ -1,7 +1,7 @@
 ## Interface: 120007
-## Title: QoLify: Decor settings carryover
-## Notes: Keeps your Decor Spendwatch settings while the module moves to QoLify: Decor. Safe to remove after logging in once.
-## Version: 2.0.0
+## Title: QoLify: Decor Tools settings carryover
+## Notes: Keeps your Decor Spendwatch settings while the module moves to QoLify: Decor Tools. Safe to remove after logging in once.
+## Version: 2.0.1
 ## Author: Rothirr
 ## RequiredDeps: QoLify
 ## SavedVariables: DecorSpendwatchDB

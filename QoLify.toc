@@ -1,7 +1,7 @@
 ## Interface: 120007
 ## Title: QoLify
 ## Notes: A collection of small quality-of-life modules. Each module loads only when you enable it.
-## Version: 1.1.0
+## Version: 1.1.1
 ## Author: Rothirr
 ## IconTexture: Interface\Icons\INV_Misc_Gift_01
 ## X-Curse-Project-ID: 1615328

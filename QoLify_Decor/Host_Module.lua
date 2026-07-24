@@ -12,6 +12,13 @@ local ADDON, DCR = ...
 -- and declaring the SavedVariables in the .toc is what mirrors the data.
 -- Remove or disable the standalone addon and this module takes over.
 local function StandaloneActive()
+    -- Enabled is not enough: an enabled standalone that failed to load (out
+    -- of date with "load out of date" off, say) must not put us on standby,
+    -- or nobody owns the slash commands. By PLAYER_LOGIN everything that is
+    -- going to load has loaded, so the check does not race load order.
+    if not C_AddOns.IsAddOnLoaded("DecorSpendwatch") then
+        return false
+    end
     -- Check for THIS character: the no-character form reports "enabled on
     -- some character", which would leave both addons inert on characters
     -- where the standalone is unchecked.

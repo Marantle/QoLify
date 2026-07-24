@@ -1,5 +1,5 @@
 ## Interface: 120007
-## Title: Decor Tools
+## Title: QoLify: Standalone Decor Tools
 ## Notes: Housing decor tools: a shopping cart you fill while decorating, plus the gold spend watcher.
 ## Category-enUS: Housing
 ## Category-deDE: Behausung
@@ -12,7 +12,7 @@
 ## Category-zhTW: 房屋
 ## Category-ptBR: Habitação
 ## Category-itIT: Alloggio
-## Version: 2.0.0
+## Version: 2.0.1
 ## Author: Rothirr
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## AddonCompartmentFunc: DecorSpendwatch_OnAddonCompartmentClick

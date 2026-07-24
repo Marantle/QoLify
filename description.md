@@ -22,7 +22,7 @@ which kicks in the instant a boss encounter starts. Full music out in the world,
 only in a key, everything but Master muted on a raid pull. The sync goes both ways, so
 a change made in the game's own audio options is picked up by the section you are in.
 
-**Decor** is a pair of tools for housing decor. The shopping cart is a wish list you
+**Decor Tools** is a pair of tools for housing decor. The shopping cart is a wish list you
 fill while decorating: hit the + on catalog entries, or drop the piece you have
 selected in the house editor straight into the cart window. It remembers quantities and
 shows price estimates from the catalog. At a vendor, carted items get a "buy N" line on

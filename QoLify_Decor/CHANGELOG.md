@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.1
+- The addon list title is now "QoLify: Standalone Decor Tools", matching how
+  the rest of the QoLify family is named. Nothing else changed.
+
 ## 2.0.0
 - Renamed to Decor Tools. The spend watching stays as it was, and a decor
   shopping cart joins it.

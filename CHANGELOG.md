@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1
+- The Decor Tools module no longer stands by for a standalone that is enabled
+  in the addon list but never actually loaded, so the slash commands always
+  have an owner.
+- Consistent titles across the family: the module is "QoLify: Decor Tools"
+  and the settings carryover stub follows suit, matching the standalone's
+  "QoLify: Standalone Decor Tools".
+
 ## 1.1.0
 - The Decor Spendwatch module is now QoLify: Decor, carrying Decor Tools 2.0.0
   with the new decor shopping cart (its own changelog has the details). Settings
