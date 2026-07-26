@@ -12,6 +12,7 @@ local ROW_H = 76
 local ARM_SECS = 4 -- how long the Buy all confirm click stays armed
 
 local panel, dropZone, dropIcon, dropText, listContent, countText, buyAllBtn
+local catalogLink -- "or add from the catalog" line, opens the catalog
 local bounce -- drop zone thump, played when an added icon lands in it
 local rows = {}
 local createRow
@@ -231,17 +232,39 @@ function DCR.CartFlyFX(entry, count)
     end
 end
 
+-- The dashboard is load-on-demand, and its catalog tab is where the + buttons
+-- live outside the house editor.
+local function openCatalog()
+    if not HousingDashboardFrame then
+        C_AddOns.LoadAddOn("Blizzard_HousingDashboard")
+    end
+    if not HousingDashboardFrame then
+        return
+    end
+    ShowUIPanel(HousingDashboardFrame)
+    if HousingDashboardFrame.catalogTab then
+        HousingDashboardFrame:SetTab(HousingDashboardFrame.catalogTab)
+    end
+end
+
 local function paintDropZone()
+    dropText:ClearAllPoints()
     if pending then
         dropZone:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.9)
         setIcon(dropIcon, pending)
+        dropText:SetPoint("LEFT", dropIcon, "RIGHT", 12, 0)
+        dropText:SetPoint("RIGHT", -10, 0)
         dropText:SetText("Add: " .. (pending.name or "selected decor"))
         dropText:SetTextColor(1, 1, 1)
+        catalogLink:Hide()
     else
         dropZone:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
         dropIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
-        dropText:SetText("Drop decor here in edit mode")
+        dropText:SetPoint("LEFT", dropIcon, "RIGHT", 12, 9)
+        dropText:SetPoint("RIGHT", -10, 9)
+        dropText:SetText("Drop decor here in edit mode,")
         dropText:SetTextColor(DIM[1], DIM[2], DIM[3])
+        catalogLink:Show()
     end
 end
 
@@ -547,6 +570,21 @@ local function build()
     dropText:SetPoint("RIGHT", -10, 0)
     dropText:SetJustifyH("LEFT")
     dropText:SetWordWrap(false)
+
+    catalogLink = CreateFrame("Button", nil, dropZone)
+    local linkText = catalogLink:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    linkText:SetPoint("TOPLEFT")
+    linkText:SetText("or add from the catalog")
+    linkText:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+    catalogLink:SetPoint("TOPLEFT", dropText, "BOTTOMLEFT", 0, -3)
+    catalogLink:SetSize(linkText:GetStringWidth() + 2, 14)
+    catalogLink:SetScript("OnEnter", function()
+        linkText:SetTextColor(1, 1, 1)
+    end)
+    catalogLink:SetScript("OnLeave", function()
+        linkText:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+    end)
+    catalogLink:SetScript("OnClick", openCatalog)
 
     bounce = dropZone:CreateAnimationGroup()
     local dip = bounce:CreateAnimation("Translation")

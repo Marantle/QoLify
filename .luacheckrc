@@ -128,4 +128,5 @@ read_globals = {
     "ScrollUtil",
     "HouseEditorFrame",
     "HousingDashboardFrame",
+    "ShowUIPanel",
 }
