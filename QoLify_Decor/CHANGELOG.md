@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.0
+- While no decor is selected, the drop zone offers an "or add from the
+  catalog" link. It opens the housing dashboard on the catalog tab, where
+  the + buttons live.
+
 ## 2.0.1
 - The addon list title is now "QoLify: Standalone Decor Tools", matching how
   the rest of the QoLify family is named. Nothing else changed.
