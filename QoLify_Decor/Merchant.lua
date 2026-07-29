@@ -133,7 +133,9 @@ function DCR.ScanMerchantPrices()
     wipe(slotByRecordID)
     for i = 1, GetMerchantNumItems() or 0 do
         local link = GetMerchantItemLink(i)
-        if isHousingDecor(link) then
+        -- carted non-decor (dyes) get priced too, decor gets priced always
+        local entry = link and DCR.CartEntryForItem(link)
+        if entry or isHousingDecor(link) then
             local itemID = C_Item.GetItemInfoInstant(link)
             if itemID then
                 local rec = cart.prices[itemID]
@@ -148,7 +150,6 @@ function DCR.ScanMerchantPrices()
                 rec.costs = slotCosts(i)
                 rec.estimated = nil -- live vendor data beats the sourceText estimate
             end
-            local entry = DCR.CartEntryForItem(link)
             if entry then
                 slotByRecordID[entry.recordID] = i
             end
@@ -205,7 +206,7 @@ hooksecurefunc("BuyMerchantItem", function(index, quantity)
     if not link then
         return
     end
-    DCR.RecordCartPurchase(link, quantity or 1)
+    DCR.NoteVendorPurchase(link, quantity or 1)
     if not isHousingDecor(link) then
         return
     end

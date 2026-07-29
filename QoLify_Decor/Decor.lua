@@ -275,6 +275,7 @@ function DCR.InitCore()
     DecorSpendwatchDB.cart = cart
     cart.items = cart.items or {}
     cart.prices = cart.prices or {} -- [itemID] = { price, costs }, learned at vendors
+    cart.pending = cart.pending or {} -- [itemID] = n, AH buys ticked off, delivery not landed yet
     if cart.buyMessages == nil then
         cart.buyMessages = true
     end

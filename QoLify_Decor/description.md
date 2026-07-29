@@ -8,8 +8,10 @@ spending watcher so the decorating doesn't quietly empty your gold.
 Type `/cart` or click the minimap coin. While you decorate, collect the pieces
 you're missing: every catalog entry gets a small + button (in the house editor
 storage and on the housing dashboard), the decor piece you have selected in
-edit mode can be dropped straight into the cart box, and decor items drag in
-from your bags. Shift adds 5 at once, Ctrl adds 10.
+edit mode can be dropped straight into the cart box, and decor items or dyes
+drag in from your bags. Shift adds 5 at once, Ctrl adds 10. Dyes can also be
+carted right from the dye picker while customizing a piece: hover a swatch
+and hit the +, or just Ctrl-click it, again for each extra one planned.
 
 Carted items show their price. The catalog gives an estimate, marked with ~,
 and visiting a vendor that sells a piece records its real cost, whether gold,
@@ -21,6 +23,16 @@ down as you buy. Rows grow a Buy button for items the open vendor sells,
 walking up to a vendor that stocks your items opens the cart by itself, and
 Buy all fetches everything it can at three purchases a second, with a confirm
 click first so it never runs by accident.
+
+Pieces without a vendor still get ticked off: an auction win pulled from the
+mailbox, a crafted piece, a trade, anything that lands in your bags counts
+against the list. At the auction house the cart opens by itself when
+something unpriced is on the list, and those items grow an AH button. With
+Auctionator it searches through the shopping tab, planned counts included,
+and a Search AH button runs the whole unpriced list in one go. Without
+Auctionator the button searches too, with the results landing in the browse
+list. Buying a carted dye ticks the list right at the purchase, and the
+mail delivery later will not tick it twice.
 
 ## The spend watcher
 

@@ -1,6 +1,23 @@
 # Changelog
 
 ## 2.1.0
+- Cart items now get crossed off no matter where they come from. An auction
+  win pulled from the mailbox, a crafted piece, a trade, anything that lands
+  in your bags counts against the list, not just vendor buys.
+- Dyes can go in the cart. Hover a swatch in the dye picker while
+  customizing decor and hit the + (or Ctrl-click), click again to plan
+  more, or drag a dye item in from your bags. A vendor selling a carted dye
+  records its price like any decor piece. Dye rows draw compact, and decor
+  rows got tighter too.
+- At the auction house, carted items with no known vendor price show an AH
+  button. With Auctionator installed it searches through the shopping tab
+  with the planned counts attached, and a Search AH button runs the whole
+  unpriced list at once. Without Auctionator the button searches too, with
+  the results landing in the stock browse list. Buying a carted dye ticks
+  the list the moment the purchase goes through, and collecting the
+  delivery from the mail later will not tick it twice. The cart opens by
+  itself at the AH when something unpriced is on the list, same as at a
+  stocked vendor.
 - While no decor is selected, the drop zone offers an "or add from the
   catalog" link. It opens the housing dashboard on the catalog tab, where
   the + buttons live.

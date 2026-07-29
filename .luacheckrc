@@ -128,5 +128,12 @@ read_globals = {
     "ScrollUtil",
     "HouseEditorFrame",
     "HousingDashboardFrame",
+    "DyeSelectionPopout",
+    "C_DyeColor",
+    "GetMouseFoci",
+    "C_AuctionHouse",
+    "AuctionHouseFrame",
+    "AuctionHouseFrameDisplayMode",
+    "Auctionator",
     "ShowUIPanel",
 }

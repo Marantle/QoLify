@@ -8,10 +8,11 @@ local GOLD = DCR.COLOR_GOLD
 local DIM = DCR.COLOR_DIM
 local label, flatButton = DCR.Label, DCR.FlatButton
 
-local ROW_H = 76
+local ROW_H = 66
+local DYE_ROW_H = 46 -- dye rows carry a small icon and pack tighter
 local ARM_SECS = 4 -- how long the Buy all confirm click stays armed
 
-local panel, dropZone, dropIcon, dropText, listContent, countText, buyAllBtn
+local panel, dropZone, dropIcon, dropText, listContent, countText, buyAllBtn, searchAhBtn
 local catalogLink -- "or add from the catalog" line, opens the catalog
 local bounce -- drop zone thump, played when an added icon lands in it
 local rows = {}
@@ -169,7 +170,8 @@ local function playFx(entry)
     end
     fx.busy = true
     setIcon(fx.tex, entry)
-    fx.tex:SetSize(56, 56)
+    local s = entry.dye and 28 or 56
+    fx.tex:SetSize(s, s)
     local dx = math.random(-70, 70)
     fx.tex:ClearAllPoints()
     fx.tex:SetPoint("CENTER", dropZone, "CENTER", dx, 80)
@@ -190,7 +192,8 @@ local function playFly(entry)
     end
     fx.busy = true
     setIcon(fx.tex, entry)
-    fx.tex:SetSize(112, 112)
+    local s = entry.dye and 56 or 112
+    fx.tex:SetSize(s, s)
     local scale = dropZone:GetEffectiveScale()
     local cx, cy = GetCursorPosition()
     local dzx, dzy = dropZone:GetCenter()
@@ -268,6 +271,71 @@ local function paintDropZone()
     end
 end
 
+-- The item name reaches the AH search, with the entry name (for dyes the
+-- color) as the looser fallback while the item is not cached. Searches go
+-- through Auctionator's shopping tab when it is installed, its non-exact
+-- mode so a color name still matches the dye item. The stock browse only
+-- takes one term, which is enough for a row's own button.
+local function ahName(entry)
+    return entry.itemID and (C_Item.GetItemNameByID(entry.itemID) or entry.name) or nil
+end
+
+local ahApi = function()
+    local api = Auctionator and Auctionator.API and Auctionator.API.v1
+    return api and api.MultiSearchAdvanced and api or nil
+end
+
+-- terms are { searchString, quantity } pairs, the advanced search carries
+-- the planned count into Auctionator's shopping list like its own crafting
+-- searches do
+local function ahSearch(terms)
+    if #terms == 0 then
+        return
+    end
+    local api = ahApi()
+    if api then
+        api.MultiSearchAdvanced("QoLify Decor Tools", terms)
+        return
+    end
+    -- No Auctionator: a raw browse query, the shape its scans use (every
+    -- field present, empty tables included, nil filters match nothing).
+    -- Results land in the stock browse list. The search box stays empty on
+    -- purpose: writing to it taints the results and buying those throws an
+    -- internal auction house error (observed 120007), while results from a
+    -- raw query never pass through addon-touched UI state.
+    C_AuctionHouse.SendBrowseQuery({
+        searchString = terms[1].searchString,
+        sorts = {},
+        filters = {},
+        itemClassFilters = {},
+    })
+    -- flip back from an item's details to the browse list, the same call
+    -- Blizzard's search path makes right after its own query
+    if AuctionHouseFrame and AuctionHouseFrameDisplayMode and AuctionHouseFrame.SetDisplayMode then
+        AuctionHouseFrame:SetDisplayMode(AuctionHouseFrameDisplayMode.Buy)
+    end
+end
+
+-- Rows are laid out at a running offset because their heights differ by
+-- kind, and the remove and buy buttons move in with the shorter dye row.
+local function layoutRow(row, entry, y)
+    local h = entry.dye and DYE_ROW_H or ROW_H
+    row:SetHeight(h)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", 0, -y)
+    row:SetPoint("TOPRIGHT", 0, -y)
+    local icon = entry.dye and 35 or 60
+    row.icon:SetSize(icon, icon)
+    row.remove:ClearAllPoints()
+    row.remove:SetPoint("TOPRIGHT", -2, entry.dye and -4 or -10)
+    -- buy and ah share the slot, a merchant and the AH cannot both be open
+    row.buy:ClearAllPoints()
+    row.buy:SetPoint("BOTTOMRIGHT", -2, entry.dye and 4 or 6)
+    row.ah:ClearAllPoints()
+    row.ah:SetPoint("BOTTOMRIGHT", -2, entry.dye and 4 or 6)
+    return y + h
+end
+
 local function refresh()
     if not panel then
         return
@@ -283,21 +351,25 @@ local function refresh()
         if a.addedAt ~= b.addedAt then
             return (a.addedAt or 0) < (b.addedAt or 0)
         end
-        return a.recordID < b.recordID
+        -- dye keys are strings, decor keys numbers, so compare as text
+        return tostring(a.recordID) < tostring(b.recordID)
     end)
     local total = 0
+    local y = 0
     local knownCost = 0
     local currencyTotals
     local unpriced = false
     local anyBuyable = false
+    local anyAH = false
     for i, entry in ipairs(order) do
         local row = rows[i]
         if not row then
-            row = createRow(i)
+            row = createRow()
             rows[i] = row
         end
         row.recordID = entry.recordID
         setIcon(row.icon, entry)
+        y = layoutRow(row, entry, y)
         row.name:SetText(entry.name or ("decor " .. entry.recordID))
         -- No itemID means no vendor to buy it from (yet), shown dimmed.
         if entry.itemID then
@@ -310,9 +382,13 @@ local function refresh()
         local buyable = DCR.MerchantSlotFor(entry.recordID) ~= nil
         anyBuyable = anyBuyable or buyable
         row.buy:SetShown(buyable)
+        local rec = DCR.PriceFor(entry.itemID)
+        -- no vendor price known, so offer the auction house while it is open
+        local ahable = DCR.AuctionHouseOpen() and entry.itemID ~= nil and not (rec and (rec.price or rec.costs))
+        row.ah:SetShown(ahable)
+        anyAH = anyAH or ahable
         row:Show()
         total = total + entry.qty
-        local rec = DCR.PriceFor(entry.itemID)
         if rec and rec.price then
             knownCost = knownCost + rec.price * entry.qty
         end
@@ -335,7 +411,7 @@ local function refresh()
     for i = #order + 1, #rows do
         rows[i]:Hide()
     end
-    listContent:SetHeight(math.max(1, #order * ROW_H))
+    listContent:SetHeight(math.max(1, y))
     -- Prices get learned at vendors, so the sum is marked partial until
     -- every item has been seen at one.
     local parts = {}
@@ -366,6 +442,10 @@ local function refresh()
     if buyAllBtn and not buyTicker then
         buyAllBtn:SetShown(anyBuyable)
     end
+    if searchAhBtn then
+        -- the batch search needs Auctionator, without it rows buy one by one
+        searchAhBtn:SetShown(anyAH and ahApi() ~= nil)
+    end
 end
 DCR.RefreshCartUI = refresh
 
@@ -374,19 +454,17 @@ local function rowEntry(row)
     return list and row.recordID and list[row.recordID]
 end
 
-function createRow(i)
+-- Position and size come from layoutRow on every refresh, since a reused
+-- row can switch between the decor and dye shapes.
+function createRow()
     local row = CreateFrame("Frame", nil, listContent)
-    row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
-    row:SetPoint("TOPRIGHT", 0, -(i - 1) * ROW_H)
-    row:SetHeight(ROW_H)
 
     row.icon = row:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(70, 70)
     row.icon:SetPoint("LEFT", 2, 0)
 
     local remove = flatButton(row, "x", 18)
     remove:SetHeight(18)
-    remove:SetPoint("TOPRIGHT", -2, -10)
+    row.remove = remove
     remove:SetScript("OnClick", function()
         DCR.RemoveCartEntry(row.recordID)
     end)
@@ -394,12 +472,34 @@ function createRow(i)
     -- shown only while a vendor selling this item is open
     row.buy = flatButton(row, "Buy 1", 56)
     row.buy:SetHeight(20)
-    row.buy:SetPoint("BOTTOMRIGHT", -2, 6)
     row.buy:Hide()
     row.buy:SetScript("OnClick", function()
         local slot = DCR.MerchantSlotFor(row.recordID)
         if slot then
             BuyMerchantItem(slot, 1)
+        end
+    end)
+
+    -- shown at the auction house for items no vendor has priced
+    row.ah = flatButton(row, "AH", 34)
+    row.ah:SetHeight(20)
+    row.ah:Hide()
+    row.ah:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Search the auction house")
+        if not ahApi() then
+            GameTooltip:AddLine("Results show up in the browse list.", 0.8, 0.8, 0.8)
+        end
+        GameTooltip:Show()
+    end)
+    row.ah:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    row.ah:SetScript("OnClick", function()
+        local entry = rowEntry(row)
+        local name = entry and ahName(entry)
+        if name then
+            ahSearch({ { searchString = name, quantity = entry.qty } })
         end
     end)
 
@@ -511,9 +611,16 @@ local function addFromCursor()
     if entry then
         addResolved(entry)
         ClearCursor()
+        return true
+    end
+    local dyeColorID = cursorLink and C_DyeColor.GetDyeColorForItem(cursorLink)
+    local added = dyeColorID and DCR.AddDyeEntry(C_DyeColor.GetDyeColorInfo(dyeColorID))
+    if added then
+        playFx(added)
+        ClearCursor()
     else
         -- Leave the item on the cursor so it can go back to the bags.
-        DCR.Print("that item is not housing decor.")
+        DCR.Print("that item is not housing decor or dye.")
     end
     return true
 end
@@ -629,6 +736,28 @@ local function build()
     buyAllBtn = flatButton(panel, "Buy all", 90)
     buyAllBtn:SetPoint("RIGHT", clearBtn, "LEFT", -8, 0)
     buyAllBtn:Hide()
+
+    -- same slot as Buy all, they show at different NPCs
+    searchAhBtn = flatButton(panel, "Search AH", 90)
+    searchAhBtn:SetHeight(22)
+    searchAhBtn:SetPoint("RIGHT", clearBtn, "LEFT", -8, 0)
+    searchAhBtn:Hide()
+    searchAhBtn:SetScript("OnClick", function()
+        local list = DCR.CartItems()
+        local terms = {}
+        if list then
+            for _, entry in pairs(list) do
+                local rec = DCR.PriceFor(entry.itemID)
+                if entry.itemID and not (rec and (rec.price or rec.costs)) then
+                    local name = ahName(entry)
+                    if name then
+                        table.insert(terms, { searchString = name, quantity = entry.qty })
+                    end
+                end
+            end
+        end
+        ahSearch(terms)
+    end)
 
     -- While the confirm is armed, a gold line runs clockwise around the
     -- border, showing how long the second click has before it lapses.

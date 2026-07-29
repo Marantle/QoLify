@@ -9,6 +9,59 @@ local byItemID = {}
 local hasItems = false
 local unresolved = 0 -- entries with no known itemID
 
+-- Arrivals are noticed by diffing carted item counts on BAG_UPDATE_DELAYED
+-- against a session baseline, so mail, auction wins, crafts and trades all
+-- tick the list off, not just vendor buys. Vendor purchases announce
+-- themselves in `expected` first (see NoteVendorPurchase), so the same item
+-- is never counted twice when it lands in the bags.
+local baseline = {} -- [itemID] = last seen count
+local expected = {} -- [itemID] = { n, t }, vendor buys on their way to the bags
+local bagWatcher = CreateFrame("Frame")
+
+-- Bags only. Banks are no help here: the warband tab counts as zero after a
+-- reload until the bank is first opened (observed 120007), so including it
+-- just makes the total jump around. Withdrawals are told apart by context
+-- instead: with a bank window open, an increase is the player shuffling
+-- their own storage, and nothing else (mail, crafting, trades) can hand you
+-- items while one is open.
+local function countOf(itemID)
+    return C_Item.GetItemCount(itemID) or 0
+end
+
+local bankOpen = false
+local BANKER_TYPES = {}
+for _, k in ipairs({ "Banker", "AccountBanker", "GuildBanker" }) do
+    local t = Enum.PlayerInteractionType[k]
+    if t then
+        BANKER_TYPES[t] = true
+    end
+end
+
+-- The cart's AH search buttons only make sense while the auction house is
+-- open, tracked off the same interaction events the bank check uses. Like a
+-- vendor stocking carted items, the AH brings the cart up by itself when
+-- something on the list has no vendor price, and puts it away again.
+local ahOpen = false
+local ahAutoOpened = false
+
+function DCR.AuctionHouseOpen()
+    return ahOpen
+end
+
+local function anyUnpriced()
+    local cart = DCR.CartDB()
+    if not cart then
+        return false
+    end
+    for _, entry in pairs(cart.items) do
+        local rec = entry.itemID and cart.prices[entry.itemID]
+        if entry.itemID and not (rec and (rec.price or rec.costs)) then
+            return true
+        end
+    end
+    return false
+end
+
 local function items()
     local cart = DCR.CartDB()
     return cart and cart.items
@@ -81,7 +134,7 @@ function DCR.RebuildCartLookup()
         -- prices are final). Data can be cold (nil), then this retries on
         -- the next rebuild.
         local rec = entry.itemID and priceDB[entry.itemID]
-        if not entry.itemID or not rec or rec.estimated then
+        if not entry.dye and (not entry.itemID or not rec or rec.estimated) then
             local info = C_HousingCatalog.GetCatalogEntryInfo({
                 recordID = recordID,
                 entryType = Enum.HousingCatalogEntryType.Decor,
@@ -110,6 +163,31 @@ function DCR.RebuildCartLookup()
         else
             unresolved = unresolved + 1
         end
+    end
+    -- Baselines follow the lookup: new itemIDs start at today's count, gone
+    -- ones drop out, and so do pending AH deliveries nothing tracks anymore.
+    for itemID in pairs(baseline) do
+        if not byItemID[itemID] then
+            baseline[itemID] = nil
+        end
+    end
+    local pending = DCR.CartDB().pending
+    if pending then
+        for itemID in pairs(pending) do
+            if not byItemID[itemID] then
+                pending[itemID] = nil
+            end
+        end
+    end
+    for itemID in pairs(byItemID) do
+        if baseline[itemID] == nil then
+            baseline[itemID] = countOf(itemID)
+        end
+    end
+    if next(byItemID) then
+        bagWatcher:RegisterEvent("BAG_UPDATE_DELAYED")
+    else
+        bagWatcher:UnregisterEvent("BAG_UPDATE_DELAYED")
     end
 end
 
@@ -208,6 +286,7 @@ function DCR.AddCartEntry(info, count)
             itemID = info.itemID,
             icon = info.iconTexture,
             iconAtlas = info.iconAtlas,
+            dye = info.dye,
             qty = count,
             addedAt = GetServerTime(),
         }
@@ -226,6 +305,25 @@ function DCR.AddCartEntry(info, count)
     -- Adding while standing at a vendor picks the price up right away.
     DCR.ScanMerchantPrices()
     return entry
+end
+
+-- Dyes are not catalog entries (Enum.HousingCatalogEntryType has no dye
+-- member), they come from the customize mode dye picker as a
+-- DyeColorDisplayInfo. The consumable item carries everything that matters
+-- (vendor matching, the bag diff, prices), the prefixed key just keeps dye
+-- IDs from colliding with decor recordIDs. There is no sourceText to parse,
+-- so a dye's price only appears once a vendor selling it is visited.
+function DCR.AddDyeEntry(info, count)
+    if not (info and info.itemID) then
+        return nil
+    end
+    return DCR.AddCartEntry({
+        recordID = "dye" .. info.ID,
+        name = info.name,
+        itemID = info.itemID,
+        iconTexture = C_Item.GetItemIconByID(info.itemID),
+        dye = true,
+    }, count)
 end
 
 function DCR.SetCartQty(recordID, qty)
@@ -265,9 +363,9 @@ function DCR.SetCartBuyMessages(on)
     end
 end
 
--- Called from Merchant.lua when a carted item is bought. The entry drops off
--- the list once the planned quantity is covered, which also removes the
--- vendor tooltip line.
+-- Ticks a carted item off, whether from a vendor buy or a bag arrival. The
+-- entry drops off the list once the planned quantity is covered, which also
+-- removes the vendor tooltip line.
 function DCR.RecordCartPurchase(itemInfo, count)
     local list = items()
     local entry = DCR.CartEntryForItem(itemInfo)
@@ -287,6 +385,122 @@ function DCR.RecordCartPurchase(itemInfo, count)
     end
     changed()
 end
+
+-- Merchant.lua routes vendor buys through here. The note lets the bag diff
+-- recognize the incoming item as already handled, and it expires quietly
+-- when a learn-on-buy piece never shows up in the bags at all.
+function DCR.NoteVendorPurchase(itemInfo, count)
+    local entry = DCR.CartEntryForItem(itemInfo)
+    if entry and entry.itemID then
+        local note = expected[entry.itemID]
+        if note then
+            note.n = note.n + count
+            note.t = GetTime()
+        else
+            expected[entry.itemID] = { n = count, t = GetTime() }
+        end
+    end
+    DCR.RecordCartPurchase(itemInfo, count)
+end
+
+-- The bag diff. An increase nobody announced is a fresh arrival (mail, an
+-- auction win, crafting, a trade) and depletes the cart. Announced increases
+-- and anything during a bank visit just re-sync the baseline, as do
+-- decreases from placing or redeeming.
+bagWatcher:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
+bagWatcher:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+-- AH commodity buys tick at purchase. The confirm call carries the item and
+-- count, the events tell whether the server went through with it (the
+-- COMMODITY_PURCHASED event with a payload exists on paper but the shipped
+-- AH addons all key off SUCCEEDED, so that is the trusted signal). The
+-- pending ledger keeps the delivery from ticking the same purchase again
+-- when it lands, however much later the mail gets collected. Auctionator
+-- buys drive the same API, so the hook sees those too.
+local ahBuy
+
+hooksecurefunc(C_AuctionHouse, "ConfirmCommoditiesPurchase", function(itemID, quantity)
+    ahBuy = { itemID = itemID, qty = quantity or 1 }
+end)
+
+bagWatcher:RegisterEvent("COMMODITY_PURCHASE_SUCCEEDED")
+bagWatcher:RegisterEvent("COMMODITY_PURCHASE_FAILED")
+bagWatcher:SetScript("OnEvent", function(_, event, arg)
+    if event == "COMMODITY_PURCHASE_SUCCEEDED" then
+        local cart = DCR.CartDB()
+        if ahBuy and cart and byItemID[ahBuy.itemID] then
+            cart.pending[ahBuy.itemID] = (cart.pending[ahBuy.itemID] or 0) + ahBuy.qty
+            DCR.RecordCartPurchase(ahBuy.itemID, ahBuy.qty)
+        end
+        ahBuy = nil
+        return
+    elseif event == "COMMODITY_PURCHASE_FAILED" then
+        ahBuy = nil
+        return
+    end
+    if event ~= "BAG_UPDATE_DELAYED" then
+        if BANKER_TYPES[arg] then
+            bankOpen = event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW"
+        elseif arg == Enum.PlayerInteractionType.Auctioneer then
+            ahOpen = event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW"
+            if ahOpen then
+                ahAutoOpened = anyUnpriced() and DCR.AutoShowCart and DCR.AutoShowCart() or false
+            elseif ahAutoOpened then
+                ahAutoOpened = false
+                if DCR.HideCart then
+                    DCR.HideCart()
+                end
+            end
+            if DCR.RefreshCartUI then
+                DCR.RefreshCartUI() -- toggles the AH search buttons
+            end
+        end
+        return
+    end
+    local cart = DCR.CartDB()
+    if not cart then
+        return
+    end
+    local now = GetTime()
+    for itemID, note in pairs(expected) do
+        if now - note.t > 10 then
+            expected[itemID] = nil
+        end
+    end
+    local arrived
+    for itemID in pairs(byItemID) do
+        local count = countOf(itemID)
+        local delta = count - (baseline[itemID] or 0)
+        baseline[itemID] = count
+        if delta > 0 and not bankOpen then
+            -- an AH delivery landing was already ticked at purchase
+            local pend = cart.pending[itemID]
+            if pend then
+                local take = math.min(delta, pend)
+                delta = delta - take
+                cart.pending[itemID] = take < pend and (pend - take) or nil
+            end
+            local note = expected[itemID]
+            if note then
+                local vendor = math.min(delta, note.n)
+                delta = delta - vendor
+                note.n = note.n - vendor
+                if note.n == 0 then
+                    expected[itemID] = nil
+                end
+            end
+            if delta > 0 then
+                arrived = arrived or {}
+                arrived[itemID] = delta
+            end
+        end
+    end
+    -- applied after the loop, RecordCartPurchase rebuilds byItemID
+    if arrived then
+        for itemID, n in pairs(arrived) do
+            DCR.RecordCartPurchase(itemID, n)
+        end
+    end
+end)
 
 -- Bridges a placed decor (HousingDecorInstanceInfo from the house editor) to
 -- its catalog entry. decorID matching the catalog recordID is undocumented,

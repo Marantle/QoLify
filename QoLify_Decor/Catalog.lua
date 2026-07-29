@@ -1,10 +1,11 @@
 local _, DCR = ...
 
 -- Puts a small + button on decor entries in the catalog lists, so pieces can
--- go straight onto the shopping list while browsing. The catalog shows up in
--- the house editor's storage panel and in the housing dashboard, both
--- load-on-demand, so the hooks wait for their addons. Every step is guarded:
--- if Blizzard moves the frames around, the button simply never appears.
+-- go straight onto the shopping list while browsing. Also hooks the dye
+-- picker in customize mode, where a swatch is too small for a button and
+-- ctrl-click carts the dye instead. Everything here lives in load-on-demand
+-- Blizzard addons, so the hooks wait for them. Every step is guarded: if
+-- Blizzard moves the frames around, the button simply never appears.
 
 local function entryFromFrame(frame)
     -- Entry frames keep their catalog id from Init. Headers and market
@@ -103,10 +104,132 @@ local HOSTS = {
     end,
 }
 
+-- No widget script and no handler method ever fires on the swatch frames
+-- themselves (observed 120007, HookScript and hooksecurefunc both stay
+-- silent, and Blizzard's own OnEnter tooltip never shows either). The one
+-- thing the client does route is the click, straight into the popout's
+-- OnSwatchClicked with the swatch attached, so ctrl-click rides that.
+-- Blizzard's handler runs first, meaning a ctrl-click also previews the dye
+-- on the decor, which is harmless.
+
+-- shift-click is the game's own dye tracking, so ctrl adds exactly one
+local function onSwatchClick(swatch)
+    if not IsControlKeyDown() or IsShiftKeyDown() then
+        return
+    end
+    local added = DCR.AddDyeEntry(swatch.dyeColorInfo, 1)
+    if added then
+        DCR.ShowCart()
+        DCR.CartFlyFX(added, 1)
+    end
+end
+
+-- A small + like the catalog entries get, sized for a swatch. Since the
+-- swatches produce no hover events at all, a light ticker runs while the
+-- popout is shown and moves the button to whatever swatch the mouse is on.
+-- Polling is the last resort, but here there is provably nothing to listen
+-- to, and the ticker lives only as long as the picker is open.
+local hoverBtn, hoverTicker
+
+local function trackHover()
+    if not DyeSelectionPopout:IsShown() then
+        hoverTicker:Cancel()
+        hoverTicker = nil
+        if hoverBtn then
+            hoverBtn:Hide()
+            hoverBtn = nil
+        end
+        return
+    end
+    local focus = GetMouseFoci and GetMouseFoci()[1]
+    local btn
+    if focus then
+        if focus.cartSwatch then
+            btn = focus -- the mouse is on the + itself
+        else
+            local info = focus.cartAddButton and focus.dyeColorInfo
+            if info and info.itemID then
+                btn = focus.cartAddButton
+            end
+        end
+    end
+    if btn ~= hoverBtn then
+        if hoverBtn then
+            hoverBtn:Hide()
+        end
+        hoverBtn = btn
+        if btn then
+            btn:Show()
+        end
+    end
+end
+
+local function attachSwatchButton(swatch)
+    local btn = DCR.FlatButton(swatch, "+", 16)
+    btn:SetHeight(16)
+    btn:SetPoint("BOTTOMRIGHT", -1, 1)
+    btn:SetFrameLevel(swatch:GetFrameLevel() + 10)
+    btn:Hide()
+    btn.cartSwatch = swatch
+    btn:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Add to cart")
+        GameTooltip:Show()
+    end)
+    btn:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    btn:SetScript("OnClick", function()
+        local added = DCR.AddDyeEntry(swatch.dyeColorInfo, 1)
+        if added then
+            DCR.ShowCart()
+            DCR.CartFlyFX(added, 1)
+        end
+    end)
+    swatch.cartAddButton = btn
+end
+
+local function hookPool(pool)
+    if not pool then
+        return
+    end
+    for swatch in pool:EnumerateActive() do
+        if not swatch.cartHooked then
+            swatch.cartHooked = true
+            attachSwatchButton(swatch)
+        end
+    end
+end
+
+local dyeHooked = false
+local function hookDyeSwatches()
+    if dyeHooked or not DyeSelectionPopout then
+        return
+    end
+    dyeHooked = true
+    if DyeSelectionPopout.OnSwatchClicked then
+        hooksecurefunc(DyeSelectionPopout, "OnSwatchClicked", function(_, swatch)
+            onSwatchClick(swatch)
+        end)
+    end
+    if DyeSelectionPopout.SetDyeSlotInfo then
+        hooksecurefunc(DyeSelectionPopout, "SetDyeSlotInfo", function(self)
+            hookPool(self.dyeSwatchPool)
+            hookPool(self.recentSwatchPool)
+            if not hoverTicker then
+                hoverTicker = C_Timer.NewTicker(0.1, trackHover)
+            end
+        end)
+    end
+end
+
 local f = CreateFrame("Frame")
 f:SetScript("OnEvent", function(_, _, name)
     if HOSTS[name] then
         hookScrollBox(HOSTS[name]())
+    end
+    if name == "Blizzard_HouseEditor" then
+        hookDyeSwatches()
     end
 end)
 
@@ -119,5 +242,8 @@ function DCR.CatalogInit()
         if C_AddOns.IsAddOnLoaded(name) then
             hookScrollBox(box())
         end
+    end
+    if C_AddOns.IsAddOnLoaded("Blizzard_HouseEditor") then
+        hookDyeSwatches()
     end
 end

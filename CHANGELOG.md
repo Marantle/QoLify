@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+- Decor Tools module 2.1.0: dyes join the shopping cart, carted items get
+  crossed off wherever they come from (auction wins, crafting, trades, not
+  just vendors), and the cart works with the auction house, nicest with
+  Auctionator installed. Its own changelog has the details.
+
 ## 1.1.1
 - The Decor Tools module no longer stands by for a standalone that is enabled
   in the addon list but never actually loaded, so the slash commands always
