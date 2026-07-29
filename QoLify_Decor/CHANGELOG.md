@@ -1,30 +1,39 @@
 # Changelog
 
+## 2.2.0
+- The cart carries its own paint catalog now. The "pick a dye" link slides
+  it out beside the cart with every dye in the picker's categories, so dyes
+  can be carted from anywhere, no house editor needed.
+- Without Auctionator the AH button no longer stops at the browse list, it
+  lands straight on the item's purchase page with the planned amount
+  preset. The game grumbles an internal auction house error over a preset
+  amount even though the buy goes through fine, so that one message is
+  hidden while a preset is in play. Real errors still show.
+- The windows remember where you dragged them between sessions, and the
+  cart also keeps its size.
+- A Ctrl-click add flies all ten icons into the cart instead of five.
+
 ## 2.1.0
 - Cart items now get crossed off no matter where they come from. An auction
   win pulled from the mailbox, a crafted piece, a trade, anything that lands
   in your bags counts against the list, not just vendor buys.
 - Dyes can go in the cart. Hover a swatch in the dye picker while
   customizing decor and hit the + (or Ctrl-click), click again to plan
-  more, or drag a dye item in from your bags. Away from your house, the
-  "pick a dye" link slides a paint catalog out beside the cart with every
-  dye, no house editor needed. A vendor selling a carted dye records its
-  price like any decor piece. Dye rows draw compact, and decor rows got
-  tighter too.
+  more, or drag a dye item in from your bags. A vendor selling a carted dye
+  records its price like any decor piece. Dye rows draw compact, and decor
+  rows got tighter too.
 - At the auction house, carted items with no known vendor price show an AH
   button. With Auctionator installed it searches through the shopping tab
   with the planned counts attached, and a Search AH button runs the whole
-  unpriced list at once. Without Auctionator the button lands you straight
-  on the item's purchase page with the planned amount preset. Buying a
-  carted dye ticks the list the moment the purchase goes through, and
-  collecting the delivery from the mail later will not tick it twice. The
-  cart opens by itself at the AH when something unpriced is on the list,
-  same as at a stocked vendor.
+  unpriced list at once. Without Auctionator the button searches too, with
+  the results landing in the stock browse list. Buying a carted dye ticks
+  the list the moment the purchase goes through, and collecting the
+  delivery from the mail later will not tick it twice. The cart opens by
+  itself at the AH when something unpriced is on the list, same as at a
+  stocked vendor.
 - While no decor is selected, the drop zone offers an "or add from the
   catalog" link. It opens the housing dashboard on the catalog tab, where
   the + buttons live.
-- The windows remember where you dragged them between sessions, and the
-  cart also keeps its size.
 
 ## 2.0.1
 - The addon list title is now "QoLify: Standalone Decor Tools", matching how

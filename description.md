@@ -23,11 +23,14 @@ only in a key, everything but Master muted on a raid pull. The sync goes both wa
 a change made in the game's own audio options is picked up by the section you are in.
 
 **Decor Tools** is a pair of tools for housing decor. The shopping cart is a wish list you
-fill while decorating: hit the + on catalog entries, or drop the piece you have
-selected in the house editor straight into the cart window. It remembers quantities and
-shows price estimates from the catalog. At a vendor, carted items get a "buy N" line on
-their tooltips that counts down as you buy, with buy buttons in the cart for whatever
-that vendor stocks. The spend watcher is the budget half: pick a per-item gold cap and
+fill while decorating: hit the + on catalog entries, drop the piece you have selected
+in the house editor straight into the cart window, or cart dyes from the dye picker
+and the cart's own paint catalog. It remembers quantities and shows price estimates
+from the catalog. At a vendor, carted items get a "buy N" line on their tooltips that
+counts down as you buy, with buy buttons in the cart for whatever that vendor stocks.
+Pieces without a vendor get crossed off too, however they land in your bags, and at
+the auction house the cart grows search buttons for them, nicest with Auctionator
+installed. The spend watcher is the budget half: pick a per-item gold cap and
 anything priced above it gets a red warning on its vendor tooltip, buy it anyway and
 you get a note in chat, and a running total tracks what decor has cost you.
 
