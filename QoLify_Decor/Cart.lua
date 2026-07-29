@@ -128,6 +128,13 @@ function DCR.RebuildCartLookup()
     local priceDB = DCR.CartDB().prices
     for recordID, entry in pairs(list) do
         hasItems = true
+        -- Dye keys are strings ("dye" plus the color ID), decor recordIDs
+        -- are numbers. Dyes carted by early builds saved no dye flag, so it
+        -- gets re-stamped from the key, which also keeps the catalog query
+        -- below away from dye keys (it errors on non-numeric recordIDs).
+        if not entry.dye and type(recordID) == "string" then
+            entry.dye = true
+        end
         -- One catalog query covers the gaps: a missing itemID, a missing
         -- price, or a price that is still just an estimate (estimates get
         -- re-parsed so parser fixes reach old records, only vendor-confirmed

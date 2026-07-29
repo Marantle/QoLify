@@ -11,7 +11,9 @@ storage and on the housing dashboard), the decor piece you have selected in
 edit mode can be dropped straight into the cart box, and decor items or dyes
 drag in from your bags. Shift adds 5 at once, Ctrl adds 10. Dyes can also be
 carted right from the dye picker while customizing a piece: hover a swatch
-and hit the +, or just Ctrl-click it, again for each extra one planned.
+and hit the +, or just Ctrl-click it, again for each extra one planned. Away
+from your house, the "pick a dye" link slides a paint catalog out beside the
+cart with every dye instead.
 
 Carted items show their price. The catalog gives an estimate, marked with ~,
 and visiting a vendor that sells a piece records its real cost, whether gold,
@@ -30,9 +32,9 @@ against the list. At the auction house the cart opens by itself when
 something unpriced is on the list, and those items grow an AH button. With
 Auctionator it searches through the shopping tab, planned counts included,
 and a Search AH button runs the whole unpriced list in one go. Without
-Auctionator the button searches too, with the results landing in the browse
-list. Buying a carted dye ticks the list right at the purchase, and the
-mail delivery later will not tick it twice.
+Auctionator the button takes you straight to the item's purchase page with
+the planned amount preset. Buying a carted dye ticks the list right at the
+purchase, and the mail delivery later will not tick it twice.
 
 ## The spend watcher
 

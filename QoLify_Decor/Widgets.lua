@@ -70,6 +70,34 @@ function DCR.FlatButton(parent, label, width)
     return b
 end
 
+-- Bordered dark box with a scrolling content frame inside, the list body of
+-- the cart and the paint catalog. Returns the box (anchor that) and the
+-- content (fill that). The content hangs from its top-left corner only,
+-- because anchoring its right edge to the scroll frame makes rows vanish
+-- once scrolled, so its width follows the scroll frame by hand instead,
+-- which also covers window resizing.
+function DCR.ScrollBox(parent)
+    local box = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    box:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    box:SetBackdropColor(0.08, 0.08, 0.1, 1)
+    box:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
+
+    local scroll = CreateFrame("ScrollFrame", nil, box, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 6, -6)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 6)
+
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(1, 1)
+    scroll:SetScrollChild(content)
+    content:SetPoint("TOPLEFT")
+    scroll:SetScript("OnSizeChanged", function(_, width)
+        content:SetWidth(width)
+    end)
+    content:SetWidth(scroll:GetWidth())
+
+    return box, content
+end
+
 -- Shift and Ctrl turn one click into 5 or 10, shared by the catalog add
 -- button and the cart's quantity buttons.
 function DCR.ClickStep()
@@ -98,9 +126,38 @@ function DCR.Window(name, width, height, titleText, stayOpen)
     panel:SetBackdropBorderColor(0, 0, 0, 1)
     panel:EnableMouse(true)
     panel:SetMovable(true)
+    panel:SetClampedToScreen(true)
     panel:RegisterForDrag("LeftButton")
     panel:SetScript("OnDragStart", panel.StartMoving)
-    panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
+
+    -- Wherever a window gets dragged (and for the resizable cart, its size
+    -- too, saved by the resize grip) it comes back next session. Bottom-left
+    -- coordinates, since StartMoving rewrites whatever anchor it finds.
+    function panel:SaveRect()
+        local store = DCR.WindowDB()
+        if not store then
+            return
+        end
+        local rect = store[name] or {}
+        store[name] = rect
+        rect.x, rect.y = self:GetLeft(), self:GetBottom()
+        if self:IsResizable() then
+            rect.w, rect.h = self:GetSize()
+        end
+    end
+    panel:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SaveRect()
+    end)
+    local store = DCR.WindowDB()
+    local saved = store and store[name]
+    if saved and saved.x then
+        if saved.w then
+            panel:SetSize(saved.w, saved.h)
+        end
+        panel:ClearAllPoints()
+        panel:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", saved.x, saved.y)
+    end
     if stayOpen then
         -- Not in UISpecialFrames (the house editor closes that whole list
         -- when it opens), so Escape gets handled by hand. Propagation is

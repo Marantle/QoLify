@@ -259,6 +259,11 @@ function DCR.CartDB()
     return db and db.cart
 end
 
+-- Saved window positions, keyed by window name. Nil until InitCore.
+function DCR.WindowDB()
+    return db and db.windows
+end
+
 -- DB seed. Called by the host once SavedVariables are ready (and, for the
 -- module, standby ruled out). Everything above no-ops until db is assigned
 -- here, which is what keeps a standing-by module inert.
@@ -279,6 +284,7 @@ function DCR.InitCore()
     if cart.buyMessages == nil then
         cart.buyMessages = true
     end
+    DecorSpendwatchDB.windows = DecorSpendwatchDB.windows or {}
     db = DecorSpendwatchDB
     -- Arms the vendor tooltip right away, no need to open the cart first.
     DCR.RebuildCartLookup()

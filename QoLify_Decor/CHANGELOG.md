@@ -6,21 +6,25 @@
   in your bags counts against the list, not just vendor buys.
 - Dyes can go in the cart. Hover a swatch in the dye picker while
   customizing decor and hit the + (or Ctrl-click), click again to plan
-  more, or drag a dye item in from your bags. A vendor selling a carted dye
-  records its price like any decor piece. Dye rows draw compact, and decor
-  rows got tighter too.
+  more, or drag a dye item in from your bags. Away from your house, the
+  "pick a dye" link slides a paint catalog out beside the cart with every
+  dye, no house editor needed. A vendor selling a carted dye records its
+  price like any decor piece. Dye rows draw compact, and decor rows got
+  tighter too.
 - At the auction house, carted items with no known vendor price show an AH
   button. With Auctionator installed it searches through the shopping tab
   with the planned counts attached, and a Search AH button runs the whole
-  unpriced list at once. Without Auctionator the button searches too, with
-  the results landing in the stock browse list. Buying a carted dye ticks
-  the list the moment the purchase goes through, and collecting the
-  delivery from the mail later will not tick it twice. The cart opens by
-  itself at the AH when something unpriced is on the list, same as at a
-  stocked vendor.
+  unpriced list at once. Without Auctionator the button lands you straight
+  on the item's purchase page with the planned amount preset. Buying a
+  carted dye ticks the list the moment the purchase goes through, and
+  collecting the delivery from the mail later will not tick it twice. The
+  cart opens by itself at the AH when something unpriced is on the list,
+  same as at a stocked vendor.
 - While no decor is selected, the drop zone offers an "or add from the
   catalog" link. It opens the housing dashboard on the catalog tab, where
   the + buttons live.
+- The windows remember where you dragged them between sessions, and the
+  cart also keeps its size.
 
 ## 2.0.1
 - The addon list title is now "QoLify: Standalone Decor Tools", matching how

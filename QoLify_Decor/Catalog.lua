@@ -2,8 +2,8 @@ local _, DCR = ...
 
 -- Puts a small + button on decor entries in the catalog lists, so pieces can
 -- go straight onto the shopping list while browsing. Also hooks the dye
--- picker in customize mode, where a swatch is too small for a button and
--- ctrl-click carts the dye instead. Everything here lives in load-on-demand
+-- picker in customize mode, where the swatches get a hover + of their own
+-- and ctrl-click carts a dye too. Everything here lives in load-on-demand
 -- Blizzard addons, so the hooks wait for them. Every step is guarded: if
 -- Blizzard moves the frames around, the button simply never appears.
 
@@ -36,11 +36,7 @@ local function attachButton(frame)
         local entry = entryFromFrame(frame)
         if entry then
             local count = DCR.ClickStep()
-            local added = DCR.AddCartEntry(entry, count)
-            if added then
-                DCR.ShowCart()
-                DCR.CartFlyFX(added, count)
-            end
+            DCR.CartFlyFX(DCR.AddCartEntry(entry, count), count)
         end
     end)
     -- Shown only while the mouse is over the entry (or the button itself,
@@ -117,11 +113,7 @@ local function onSwatchClick(swatch)
     if not IsControlKeyDown() or IsShiftKeyDown() then
         return
     end
-    local added = DCR.AddDyeEntry(swatch.dyeColorInfo, 1)
-    if added then
-        DCR.ShowCart()
-        DCR.CartFlyFX(added, 1)
-    end
+    DCR.CartFlyFX(DCR.AddDyeEntry(swatch.dyeColorInfo, 1), 1)
 end
 
 -- A small + like the catalog entries get, sized for a swatch. Since the
@@ -180,11 +172,7 @@ local function attachSwatchButton(swatch)
         GameTooltip:Hide()
     end)
     btn:SetScript("OnClick", function()
-        local added = DCR.AddDyeEntry(swatch.dyeColorInfo, 1)
-        if added then
-            DCR.ShowCart()
-            DCR.CartFlyFX(added, 1)
-        end
+        DCR.CartFlyFX(DCR.AddDyeEntry(swatch.dyeColorInfo, 1), 1)
     end)
     swatch.cartAddButton = btn
 end

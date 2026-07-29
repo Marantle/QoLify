@@ -24,6 +24,7 @@ Widgets.lua
 Spendwatch.lua
 Cart.lua
 CartWindow.lua
+DyeCatalog.lua
 Catalog.lua
 Merchant.lua
 Minimap.lua

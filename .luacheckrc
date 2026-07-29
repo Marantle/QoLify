@@ -84,6 +84,7 @@ read_globals = {
     "CLASS_SORT_ORDER",
     "Minimap",
     "GetCursorPosition",
+    "CreateColor",
     "wipe",
     -- Party Keys feature (QoL)
     "C_MythicPlus",
@@ -134,6 +135,9 @@ read_globals = {
     "C_AuctionHouse",
     "AuctionHouseFrame",
     "AuctionHouseFrameDisplayMode",
+    "AuctionHouseFrameMixin",
+    "AuctionHouseUtil",
+    "UIErrorsFrame",
     "Auctionator",
     "ShowUIPanel",
 }

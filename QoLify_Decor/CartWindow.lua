@@ -13,7 +13,8 @@ local DYE_ROW_H = 46 -- dye rows carry a small icon and pack tighter
 local ARM_SECS = 4 -- how long the Buy all confirm click stays armed
 
 local panel, dropZone, dropIcon, dropText, listContent, countText, buyAllBtn, searchAhBtn
-local catalogLink -- "or add from the catalog" line, opens the catalog
+local fxLayer -- the flying icons draw here, above the windows they cross
+local catalogLink, dyeLink -- gold links under the drop text, alternatives to dropping
 local bounce -- drop zone thump, played when an added icon lands in it
 local rows = {}
 local createRow
@@ -125,7 +126,7 @@ local function takeFx()
     if #fxPool >= 6 then
         return nil -- adds faster than the animation? skip the flourish
     end
-    local tex = panel:CreateTexture(nil, "OVERLAY", nil, 7)
+    local tex = fxLayer:CreateTexture(nil, "OVERLAY", nil, 7)
     tex:Hide()
     local group = tex:CreateAnimationGroup()
     local move = group:CreateAnimation("Translation")
@@ -210,23 +211,18 @@ local function playFly(entry)
     fx.group:Restart()
 end
 
--- Catalog.lua plays the flourish too when its + button is used with the
--- window open.
-function DCR.CartDropFX(entry)
-    if panel and panel:IsShown() and entry then
-        playFx(entry)
-    end
-end
-
--- A 5 or 10 add sends a staggered convoy instead of one icon, capped at
--- what the pool can keep in the air. Each launch reads the mouse fresh, so
--- the convoy trails the cursor if it moves.
+-- An add from a + button or swatch pops the cart up and flies the icon in.
+-- A 5 or 10 add sends a staggered convoy instead of one icon. The stagger
+-- keeps only a handful airborne at once, so even the full 10 fits the fx
+-- pool. Each launch reads the mouse fresh, so the convoy trails the cursor
+-- if it moves. Passing nil (a failed add) is fine, nothing plays.
 function DCR.CartFlyFX(entry, count)
-    if not (panel and panel:IsShown() and entry) then
+    if not entry then
         return
     end
+    DCR.ShowCart()
     playFly(entry)
-    for i = 2, math.min(count or 1, 5) do
+    for i = 2, math.min(count or 1, 10) do
         C_Timer.After(0.1 * (i - 1), function()
             if panel:IsShown() then
                 playFly(entry)
@@ -260,6 +256,7 @@ local function paintDropZone()
         dropText:SetText("Add: " .. (pending.name or "selected decor"))
         dropText:SetTextColor(1, 1, 1)
         catalogLink:Hide()
+        dyeLink:Hide()
     else
         dropZone:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
         dropIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
@@ -268,6 +265,7 @@ local function paintDropZone()
         dropText:SetText("Drop decor here in edit mode,")
         dropText:SetTextColor(DIM[1], DIM[2], DIM[3])
         catalogLink:Show()
+        dyeLink:Show()
     end
 end
 
@@ -285,9 +283,95 @@ local ahApi = function()
     return api and api.MultiSearchAdvanced and api or nil
 end
 
+-- Without Auctionator the browse results would still need a click to reach
+-- the item's purchase screen, so this watcher makes that click: when the
+-- results of our query land it selects the searched item, the same
+-- SelectBrowseResult call a row click makes (Auctionator does it from addon
+-- code too). The planned amount goes through the frame's quantity callback
+-- rather than the input box, because the commodity list rebroadcasts its own
+-- stored count once its results load and would put a plain write back to 1.
+local ahJump = CreateFrame("Frame")
+
+-- The preset amount is addon-written state, and Blizzard's buy flow reading
+-- it makes the server answer with the internal auction house error even
+-- though the purchase goes through fine (observed 120007). While a preset
+-- is live, that one error gets filtered: the AH frame's error event moves
+-- over to this frame, which forwards everything else through the same call
+-- Blizzard makes. The stock wiring comes back when the AH closes.
+local errFilter = CreateFrame("Frame")
+
+local function errFilterStop()
+    errFilter:UnregisterAllEvents()
+    if AuctionHouseFrame then
+        AuctionHouseFrame:RegisterEvent("AUCTION_HOUSE_SHOW_ERROR")
+    end
+end
+
+local function errFilterStart()
+    AuctionHouseFrame:UnregisterEvent("AUCTION_HOUSE_SHOW_ERROR")
+    errFilter:RegisterEvent("AUCTION_HOUSE_SHOW_ERROR")
+    errFilter:RegisterEvent("AUCTION_HOUSE_CLOSED")
+end
+
+errFilter:SetScript("OnEvent", function(_, event, err)
+    if event == "AUCTION_HOUSE_CLOSED" then
+        errFilterStop()
+    elseif err ~= Enum.AuctionHouseError.DatabaseError then
+        UIErrorsFrame:AddExternalErrorMessage(AuctionHouseUtil.GetErrorText(err))
+    end
+end)
+
+local function ahJumpStop()
+    ahJump.target = nil
+    ahJump.result = nil
+    ahJump:UnregisterAllEvents()
+end
+
+local function ahJumpSelect(result)
+    local info = C_AuctionHouse.GetItemKeyInfo(result.itemKey)
+    if not info then
+        -- key info not cached yet, retried when the received event fires
+        ahJump.result = result
+        ahJump:RegisterEvent("ITEM_KEY_ITEM_INFO_RECEIVED")
+        return
+    end
+    local qty = ahJump.target.qty
+    ahJumpStop()
+    AuctionHouseFrame:SelectBrowseResult(result)
+    if info.isCommodity and qty > 1 then
+        AuctionHouseFrame:TriggerEvent(AuctionHouseFrameMixin.Event.CommoditiesQuantitySelectionChanged, qty)
+        errFilterStart()
+    end
+end
+
+ahJump:SetScript("OnEvent", function(self, event, arg)
+    if event == "AUCTION_HOUSE_CLOSED" or not self.target then
+        ahJumpStop()
+    elseif event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" then
+        for _, result in ipairs(C_AuctionHouse.GetBrowseResults()) do
+            if result.itemKey.itemID == self.target.itemID then
+                ahJumpSelect(result)
+                return
+            end
+        end
+        -- not listed, the browse list itself is the answer then
+        ahJumpStop()
+    elseif event == "ITEM_KEY_ITEM_INFO_RECEIVED" and arg == self.target.itemID then
+        ahJumpSelect(self.result)
+    end
+end)
+
+local function ahJumpArm(itemID, qty)
+    ahJump.target = { itemID = itemID, qty = qty or 1 }
+    ahJump.result = nil
+    ahJump:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+    ahJump:RegisterEvent("AUCTION_HOUSE_CLOSED")
+end
+
 -- terms are { searchString, quantity } pairs, the advanced search carries
 -- the planned count into Auctionator's shopping list like its own crafting
--- searches do
+-- searches do. A term may also carry the itemID, which the fallback path
+-- uses to jump from the results to the item's purchase screen.
 local function ahSearch(terms)
     if #terms == 0 then
         return
@@ -298,17 +382,21 @@ local function ahSearch(terms)
         return
     end
     -- No Auctionator: a raw browse query, the shape its scans use (every
-    -- field present, empty tables included, nil filters match nothing).
-    -- Results land in the stock browse list. The search box stays empty on
-    -- purpose: writing to it taints the results and buying those throws an
-    -- internal auction house error (observed 120007), while results from a
-    -- raw query never pass through addon-touched UI state.
+    -- field present, empty tables included, nil filters match nothing), and
+    -- the jump watcher carries the results on into the purchase screen. The
+    -- search box stays empty on purpose: writing to it taints the results
+    -- and buying those throws an internal auction house error (observed
+    -- 120007), while results from a raw query never pass through
+    -- addon-touched UI state.
     C_AuctionHouse.SendBrowseQuery({
         searchString = terms[1].searchString,
         sorts = {},
         filters = {},
         itemClassFilters = {},
     })
+    if terms[1].itemID then
+        ahJumpArm(terms[1].itemID, terms[1].quantity)
+    end
     -- flip back from an item's details to the browse list, the same call
     -- Blizzard's search path makes right after its own query
     if AuctionHouseFrame and AuctionHouseFrameDisplayMode and AuctionHouseFrame.SetDisplayMode then
@@ -488,7 +576,7 @@ function createRow()
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Search the auction house")
         if not ahApi() then
-            GameTooltip:AddLine("Results show up in the browse list.", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine("Opens the item's purchase page, amount preset.", 0.8, 0.8, 0.8)
         end
         GameTooltip:Show()
     end)
@@ -499,7 +587,7 @@ function createRow()
         local entry = rowEntry(row)
         local name = entry and ahName(entry)
         if name then
-            ahSearch({ { searchString = name, quantity = entry.qty } })
+            ahSearch({ { searchString = name, quantity = entry.qty, itemID = entry.itemID } })
         end
     end)
 
@@ -657,7 +745,16 @@ local function build()
     end)
     grip:SetScript("OnMouseUp", function()
         panel:StopMovingOrSizing()
+        panel:SaveRect()
     end)
+
+    -- Parented to the cart so it shares its scale and lifetime, but on a
+    -- higher strata: the icons fly across window edges, and both the cart's
+    -- own children and a raised paint catalog would otherwise cover them.
+    fxLayer = CreateFrame("Frame", nil, panel)
+    fxLayer:SetFrameStrata("FULLSCREEN_DIALOG")
+    fxLayer:SetSize(1, 1)
+    fxLayer:SetPoint("CENTER")
 
     dropZone = CreateFrame("Button", nil, panel, "BackdropTemplate")
     dropZone:SetPoint("TOPLEFT", 18, -56)
@@ -678,20 +775,30 @@ local function build()
     dropText:SetJustifyH("LEFT")
     dropText:SetWordWrap(false)
 
-    catalogLink = CreateFrame("Button", nil, dropZone)
-    local linkText = catalogLink:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    linkText:SetPoint("TOPLEFT")
-    linkText:SetText("or add from the catalog")
-    linkText:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+    local function goldLink(text, onClick)
+        local btn = CreateFrame("Button", nil, dropZone)
+        local t = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        t:SetPoint("TOPLEFT")
+        t:SetText(text)
+        t:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+        btn:SetSize(t:GetStringWidth() + 2, 14)
+        btn:SetScript("OnEnter", function()
+            t:SetTextColor(1, 1, 1)
+        end)
+        btn:SetScript("OnLeave", function()
+            t:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+        end)
+        btn:SetScript("OnClick", onClick)
+        return btn
+    end
+
+    catalogLink = goldLink("or add from the catalog", openCatalog)
     catalogLink:SetPoint("TOPLEFT", dropText, "BOTTOMLEFT", 0, -3)
-    catalogLink:SetSize(linkText:GetStringWidth() + 2, 14)
-    catalogLink:SetScript("OnEnter", function()
-        linkText:SetTextColor(1, 1, 1)
+
+    dyeLink = goldLink("or pick a dye", function()
+        DCR.ToggleDyeCatalog(panel)
     end)
-    catalogLink:SetScript("OnLeave", function()
-        linkText:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    end)
-    catalogLink:SetScript("OnClick", openCatalog)
+    dyeLink:SetPoint("LEFT", catalogLink, "RIGHT", 10, 0)
 
     bounce = dropZone:CreateAnimationGroup()
     local dip = bounce:CreateAnimation("Translation")
@@ -704,29 +811,10 @@ local function build()
     rise:SetOffset(0, 4)
     rise:SetSmoothing("OUT")
 
-    -- bordered box holding the scrolling list
-    local box = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+    local box
+    box, listContent = DCR.ScrollBox(panel)
     box:SetPoint("TOPLEFT", 18, -132)
     box:SetPoint("BOTTOMRIGHT", -18, 46)
-    box:SetBackdrop({ bgFile = DCR.WHITE, edgeFile = DCR.WHITE, edgeSize = 1 })
-    box:SetBackdropColor(0.08, 0.08, 0.1, 1)
-    box:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
-
-    local scroll = CreateFrame("ScrollFrame", nil, box, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 6, -6)
-    scroll:SetPoint("BOTTOMRIGHT", -26, 6)
-
-    listContent = CreateFrame("Frame", nil, scroll)
-    listContent:SetSize(1, 1)
-    scroll:SetScrollChild(listContent)
-    listContent:SetPoint("TOPLEFT")
-    -- A scroll child may only hang from one corner, anchoring its right edge
-    -- to the scroll frame makes the rows vanish once scrolled. Width follows
-    -- the scroll frame by hand instead (also covers window resizing).
-    scroll:SetScript("OnSizeChanged", function(_, width)
-        listContent:SetWidth(width)
-    end)
-    listContent:SetWidth(scroll:GetWidth())
 
     local clearBtn = flatButton(panel, "Clear all", 90)
     clearBtn:SetPoint("BOTTOMRIGHT", -18, 16)
