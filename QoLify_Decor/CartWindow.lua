@@ -11,24 +11,51 @@ local label, flatButton = DCR.Label, DCR.FlatButton
 local ROW_H = 66
 local DYE_ROW_H = 46 -- dye rows carry a small icon and pack tighter
 local ARM_SECS = 4 -- how long the Buy all confirm click stays armed
+local COL_W = 332 -- the list width at the default 400 window, one column's cap
+local COL_GAP = 12
 
-local panel, dropZone, dropIcon, dropText, listContent, countText, buyAllBtn, searchAhBtn
+local panel, dropZone, dropIcon, dropText, listContent, countText
 local fxLayer -- the flying icons draw here, above the windows they cross
-local catalogLink, dyeLink -- gold links under the drop text, alternatives to dropping
+local catalogLink, dyeLink, bpLink -- gold links under the drop text, alternatives to dropping
 local bounce -- drop zone thump, played when an added icon lands in it
 local rows = {}
 local createRow
 local pending -- catalog entry for the decor currently selected in the editor
-local buyTicker
+local buyTicker, buySection, buyBtn -- the running section buy, and whose button started it
 local lastKnownCost, lastCurrencyTotals -- what the footer currently sums, for its tooltip
+local lastLayoutW -- list width at the last refresh, reflow only on real change
 
-local function setIcon(tex, entry)
-    if entry.iconAtlas then
-        tex:SetAtlas(entry.iconAtlas)
-    else
-        tex:SetTexture(entry.icon or 134400)
-    end
-end
+-- The list splits into these sections, each under its own collapsible header
+-- that also carries the section's Buy all and AH search. Blueprint rows stay
+-- together whether they are decor or dye, so the other two exclude bp.
+local SECTIONS = {
+    {
+        key = "decor",
+        title = "Decor",
+        phrase = "the decor section",
+        match = function(e)
+            return not e.dye and not e.bp
+        end,
+    },
+    {
+        key = "dyes",
+        title = "Dyes",
+        phrase = "the dye section",
+        match = function(e)
+            return e.dye and not e.bp
+        end,
+    },
+    {
+        key = "bp",
+        title = "From blueprints",
+        phrase = "the blueprint section",
+        match = function(e)
+            return e.bp
+        end,
+    },
+}
+
+local setIcon = DCR.SetIcon
 
 -- One item's cost as text: gold, currencies, or both joined with +.
 local function costText(entry)
@@ -58,20 +85,24 @@ local function costText(entry)
     return (rec.estimated and "~" or "") .. table.concat(parts, " + ")
 end
 
--- Auto-buy: one carted item every half second while the vendor stays open.
+-- Auto-buy: one carted item at a time while the vendor stays open, scoped to
+-- the section whose header button started it.
 local function stopBuying(msg)
     if buyTicker then
         buyTicker:Cancel()
         buyTicker = nil
     end
-    if buyAllBtn then
-        buyAllBtn.armed = nil
-        buyAllBtn.text:SetText("Buy all")
+    buySection = nil
+    if buyBtn then
+        buyBtn.armed = nil
+        buyBtn.text:SetText("Buy all")
+        buyBtn = nil
     end
     if msg then
         DCR.Print(msg)
     end
 end
+DCR.StopBuyAll = stopBuying -- Merchant.lua pulls the brake on failed buys
 
 local function affordable(rec)
     if not rec then
@@ -98,7 +129,7 @@ local function buyTick()
     local blocked = false
     if list then
         for recordID, entry in pairs(list) do
-            if entry.qty > 0 then
+            if entry.qty > 0 and (not buySection or buySection.match(entry)) then
                 local slot = DCR.MerchantSlotFor(recordID)
                 if slot then
                     if affordable(DCR.PriceFor(entry.itemID)) then
@@ -123,7 +154,7 @@ local function takeFx()
             return fx
         end
     end
-    if #fxPool >= 6 then
+    if #fxPool >= 10 then
         return nil -- adds faster than the animation? skip the flourish
     end
     local tex = fxLayer:CreateTexture(nil, "OVERLAY", nil, 7)
@@ -184,9 +215,10 @@ local function playFx(entry)
     fx.group:Restart()
 end
 
--- The catalog variant: the icon takes off at the mouse and arcs over into
--- the cart, wherever the window happens to be.
-local function playFly(entry)
+-- The catalog variant: the icon takes off at the mouse (or at an origin
+-- frame, when the launch point should not follow the cursor) and arcs over
+-- into the cart, wherever the window happens to be.
+local function playFly(entry, scatter, origin)
     local fx = takeFx()
     if not fx then
         return
@@ -196,10 +228,21 @@ local function playFly(entry)
     local s = entry.dye and 56 or 112
     fx.tex:SetSize(s, s)
     local scale = dropZone:GetEffectiveScale()
-    local cx, cy = GetCursorPosition()
+    local px, py
+    if origin then
+        local os = origin:GetEffectiveScale()
+        local x, y = origin:GetCenter()
+        px, py = x * os, y * os
+    else
+        px, py = GetCursorPosition()
+    end
     local dzx, dzy = dropZone:GetCenter()
-    local ox = cx / scale - dzx
-    local oy = cy / scale - dzy
+    local ox = px / scale - dzx
+    local oy = py / scale - dzy
+    if scatter then
+        ox = ox + math.random(-45, 45)
+        oy = oy + math.random(-35, 35)
+    end
     fx.tex:ClearAllPoints()
     fx.tex:SetPoint("CENTER", dropZone, "CENTER", ox, oy)
     fx.move:SetOffset(-ox, -oy)
@@ -231,6 +274,32 @@ function DCR.CartFlyFX(entry, count)
     end
 end
 
+-- The blueprint buttons send a loose clump instead of a convoy: up to ten of
+-- the added pieces take off around the clicked button within a blink of each
+-- other, each from its own spot. The blueprint window is a plain text list
+-- with nothing to throw, so the button stands in as the launch pad. Random
+-- picks, because a big blueprint carts far more rows than fit in the air at
+-- once. The pool cap above is sized for this worst case.
+function DCR.CartFlyBurst(entries, origin)
+    if #entries == 0 then
+        return
+    end
+    DCR.ShowCart()
+    for i = #entries, 2, -1 do
+        local j = math.random(i)
+        entries[i], entries[j] = entries[j], entries[i]
+    end
+    playFly(entries[1], true, origin)
+    for i = 2, math.min(#entries, 10) do
+        local entry = entries[i]
+        C_Timer.After(math.random() * 0.3, function()
+            if panel:IsShown() then
+                playFly(entry, true, origin)
+            end
+        end)
+    end
+end
+
 -- The dashboard is load-on-demand, and its catalog tab is where the + buttons
 -- live outside the house editor.
 local function openCatalog()
@@ -257,15 +326,18 @@ local function paintDropZone()
         dropText:SetTextColor(1, 1, 1)
         catalogLink:Hide()
         dyeLink:Hide()
+        bpLink:Hide()
     else
         dropZone:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
         dropIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
-        dropText:SetPoint("LEFT", dropIcon, "RIGHT", 12, 9)
-        dropText:SetPoint("RIGHT", -10, 9)
+        dropText:SetPoint("LEFT", dropIcon, "RIGHT", 12, 15)
+        dropText:SetPoint("RIGHT", -10, 15)
         dropText:SetText("Drop decor here in edit mode,")
         dropText:SetTextColor(DIM[1], DIM[2], DIM[3])
         catalogLink:Show()
         dyeLink:Show()
+        -- blueprints only exist on 12.1 clients
+        bpLink:SetShown(C_HousingBlueprint ~= nil)
     end
 end
 
@@ -406,12 +478,12 @@ end
 
 -- Rows are laid out at a running offset because their heights differ by
 -- kind, and the remove and buy buttons move in with the shorter dye row.
-local function layoutRow(row, entry, y)
+local function layoutRow(row, entry, x, y, w)
     local h = entry.dye and DYE_ROW_H or ROW_H
     row:SetHeight(h)
+    row:SetWidth(w)
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", 0, -y)
-    row:SetPoint("TOPRIGHT", 0, -y)
+    row:SetPoint("TOPLEFT", x, -y)
     local icon = entry.dye and 35 or 60
     row.icon:SetSize(icon, icon)
     row.remove:ClearAllPoints()
@@ -429,74 +501,138 @@ local function refresh()
         return
     end
     local list = DCR.CartItems()
-    local order = {}
+    for _, s in ipairs(SECTIONS) do
+        s.entries = s.entries or {}
+        wipe(s.entries)
+    end
     if list then
         for _, entry in pairs(list) do
-            table.insert(order, entry)
+            for _, s in ipairs(SECTIONS) do
+                if s.match(entry) then
+                    table.insert(s.entries, entry)
+                    break
+                end
+            end
         end
     end
-    table.sort(order, function(a, b)
+    local function byAge(a, b)
         if a.addedAt ~= b.addedAt then
             return (a.addedAt or 0) < (b.addedAt or 0)
         end
         -- dye keys are strings, decor keys numbers, so compare as text
         return tostring(a.recordID) < tostring(b.recordID)
-    end)
+    end
+    -- A wide window keeps the sections stacked but flows each section's own
+    -- rows into columns, one more per default-window's worth of width, so a
+    -- lone section spreads out too. Headers span the whole width.
+    local contentW = listContent:GetWidth()
+    lastLayoutW = contentW
+    local cols = math.max(1, math.floor((contentW + COL_GAP) / (COL_W + COL_GAP)))
+    local colW = cols == 1 and contentW or math.floor((contentW - (cols - 1) * COL_GAP) / cols)
     local total = 0
-    local y = 0
     local knownCost = 0
     local currencyTotals
     local unpriced = false
-    local anyBuyable = false
-    local anyAH = false
-    for i, entry in ipairs(order) do
-        local row = rows[i]
-        if not row then
-            row = createRow()
-            rows[i] = row
-        end
-        row.recordID = entry.recordID
-        setIcon(row.icon, entry)
-        y = layoutRow(row, entry, y)
-        row.name:SetText(entry.name or ("decor " .. entry.recordID))
-        -- No itemID means no vendor to buy it from (yet), shown dimmed.
-        if entry.itemID then
-            row.name:SetTextColor(1, 1, 1)
+    local rowIndex = 0
+    local y = 0
+    local cart = DCR.CartDB()
+    local collapsed = cart and cart.collapsed or {}
+    for _, s in ipairs(SECTIONS) do
+        local h = s.header
+        if #s.entries == 0 then
+            h:Hide()
         else
-            row.name:SetTextColor(DIM[1], DIM[2], DIM[3])
-        end
-        row.qty:SetText("x" .. entry.qty)
-        row.cost:SetText(costText(entry))
-        local buyable = DCR.MerchantSlotFor(entry.recordID) ~= nil
-        anyBuyable = anyBuyable or buyable
-        row.buy:SetShown(buyable)
-        local rec = DCR.PriceFor(entry.itemID)
-        -- no vendor price known, so offer the auction house while it is open
-        local ahable = DCR.AuctionHouseOpen() and entry.itemID ~= nil and not (rec and (rec.price or rec.costs))
-        row.ah:SetShown(ahable)
-        anyAH = anyAH or ahable
-        row:Show()
-        total = total + entry.qty
-        if rec and rec.price then
-            knownCost = knownCost + rec.price * entry.qty
-        end
-        if rec and rec.costs then
-            for _, c in ipairs(rec.costs) do
-                currencyTotals = currencyTotals or {}
-                local key = c.label or c.icon or "?"
-                local t = currencyTotals[key]
-                if not t then
-                    t = { amount = 0, icon = c.icon, label = c.label }
-                    currencyTotals[key] = t
+            table.sort(s.entries, byAge)
+            local closed = collapsed[s.key]
+            h:ClearAllPoints()
+            h:SetPoint("TOPLEFT", 0, -y)
+            h:SetWidth(contentW)
+            h.title:SetText((closed and "+ " or "- ") .. s.title .. " (" .. #s.entries .. ")")
+            h:Show()
+            y = y + 24
+            -- rows fill a column until it holds its share of the section's
+            -- height, then spill into the next
+            local totalH = 0
+            if not closed then
+                for _, entry in ipairs(s.entries) do
+                    totalH = totalH + (entry.dye and DYE_ROW_H or ROW_H)
                 end
-                t.amount = t.amount + c.amount * entry.qty
             end
-        end
-        if not (rec and (rec.price or rec.costs)) then
-            unpriced = true
+            local target = math.ceil(totalH / cols)
+            local cx, cy, tallest = 0, 0, 0
+            local remH = totalH
+            local secBuyable, secAH = false, false
+            for _, entry in ipairs(s.entries) do
+                -- the footer always sums the whole cart, collapsed or not
+                total = total + entry.qty
+                local rec = DCR.PriceFor(entry.itemID)
+                if rec and rec.price then
+                    knownCost = knownCost + rec.price * entry.qty
+                end
+                if rec and rec.costs then
+                    for _, c in ipairs(rec.costs) do
+                        currencyTotals = currencyTotals or {}
+                        local key = c.label or c.icon or "?"
+                        local t = currencyTotals[key]
+                        if not t then
+                            t = { amount = 0, icon = c.icon, label = c.label }
+                            currencyTotals[key] = t
+                        end
+                        t.amount = t.amount + c.amount * entry.qty
+                    end
+                end
+                if not (rec and (rec.price or rec.costs)) then
+                    unpriced = true
+                end
+                local buyable = DCR.MerchantSlotFor(entry.recordID) ~= nil
+                secBuyable = secBuyable or buyable
+                -- no vendor price known, so offer the auction house while
+                -- it is open
+                local ahable = DCR.AuctionHouseOpen() and entry.itemID ~= nil and not (rec and (rec.price or rec.costs))
+                secAH = secAH or ahable
+                if not closed then
+                    rowIndex = rowIndex + 1
+                    local row = rows[rowIndex]
+                    if not row then
+                        row = createRow()
+                        rows[rowIndex] = row
+                    end
+                    row.recordID = entry.recordID
+                    setIcon(row.icon, entry)
+                    cy = layoutRow(row, entry, cx * (colW + COL_GAP), y + cy, colW) - y
+                    tallest = math.max(tallest, cy)
+                    -- spill once a column holds its share of what was left
+                    -- when it started, so leftovers land in the front
+                    -- columns and the tail never runs longest
+                    remH = remH - (entry.dye and DYE_ROW_H or ROW_H)
+                    if cy >= target and cx < cols - 1 then
+                        cx = cx + 1
+                        cy = 0
+                        target = math.ceil(remH / (cols - cx))
+                    end
+                    row.name:SetText(entry.name or ("decor " .. entry.recordID))
+                    -- No itemID means no vendor to buy it from (yet), shown
+                    -- dimmed.
+                    if entry.itemID then
+                        row.name:SetTextColor(1, 1, 1)
+                    else
+                        row.name:SetTextColor(DIM[1], DIM[2], DIM[3])
+                    end
+                    row.qty:SetText("x" .. entry.qty)
+                    row.cost:SetText(costText(entry))
+                    row.buy:SetShown(buyable)
+                    row.ah:SetShown(ahable)
+                    row:Show()
+                end
+            end
+            -- A vendor and the AH cannot both be open, so the two header
+            -- buttons share their slot. The batch search needs Auctionator.
+            h.buy:SetShown(secBuyable)
+            h.ah:SetShown(secAH and ahApi() ~= nil)
+            y = y + tallest
         end
     end
-    for i = #order + 1, #rows do
+    for i = rowIndex + 1, #rows do
         rows[i]:Hide()
     end
     listContent:SetHeight(math.max(1, y))
@@ -527,15 +663,155 @@ local function refresh()
     end
     countText:SetText(text)
     lastKnownCost, lastCurrencyTotals = knownCost, currencyTotals
-    if buyAllBtn and not buyTicker then
-        buyAllBtn:SetShown(anyBuyable)
-    end
-    if searchAhBtn then
-        -- the batch search needs Auctionator, without it rows buy one by one
-        searchAhBtn:SetShown(anyAH and ahApi() ~= nil)
-    end
 end
 DCR.RefreshCartUI = refresh
+
+-- The two-click confirm's countdown, shared by the section buy buttons:
+-- while armed, a gold line runs clockwise around the button's border,
+-- showing how long the second click has before it lapses.
+local function addArmSweep(btn)
+    local function edge(point, vertical)
+        local t = btn:CreateTexture(nil, "OVERLAY")
+        t:SetColorTexture(GOLD[1], GOLD[2], GOLD[3])
+        t:SetPoint(point)
+        if vertical then
+            t:SetWidth(1)
+        else
+            t:SetHeight(1)
+        end
+        t:Hide()
+        return t
+    end
+    local top = edge("TOPLEFT")
+    local right = edge("TOPRIGHT", true)
+    local bottom = edge("BOTTOMRIGHT")
+    local left = edge("BOTTOMLEFT", true)
+
+    local function seg(t, len, vertical)
+        if len > 0 then
+            t:Show()
+            if vertical then
+                t:SetHeight(len)
+            else
+                t:SetWidth(len)
+            end
+        else
+            t:Hide()
+        end
+    end
+
+    -- OnUpdate only while armed, takes itself down when the window lapses
+    btn.armSweep = function(self)
+        local p = (GetTime() - self.armedAt) / ARM_SECS
+        if not self.armed or p >= 1 then
+            self:SetScript("OnUpdate", nil)
+            top:Hide()
+            right:Hide()
+            bottom:Hide()
+            left:Hide()
+            return
+        end
+        local w, h = self:GetWidth(), self:GetHeight()
+        local run = p * 2 * (w + h)
+        seg(top, math.min(run, w))
+        seg(right, math.min(run - w, h), true)
+        seg(bottom, math.min(run - w - h, w))
+        seg(left, math.min(run - 2 * w - h, h), true)
+    end
+end
+
+local function onSectionBuy(self)
+    if buyTicker then
+        stopBuying("stopped.")
+        return
+    end
+    local s = self.section
+    if not self.armed then
+        self.armed = true
+        self.armedAt = GetTime()
+        self.text:SetText("Really?")
+        self:SetScript("OnUpdate", self.armSweep)
+        local units = 0
+        local list = DCR.CartItems()
+        if list then
+            for recordID, entry in pairs(list) do
+                if s.match(entry) and DCR.MerchantSlotFor(recordID) then
+                    units = units + entry.qty
+                end
+            end
+        end
+        DCR.Print(
+            ("this vendor covers %d planned buys in %s, click again to get them at 3 a second."):format(units, s.phrase)
+        )
+        C_Timer.After(ARM_SECS, function()
+            if self.armed then
+                self.armed = nil
+                self.text:SetText("Buy all")
+            end
+        end)
+        return
+    end
+    self.armed = nil
+    self.text:SetText("Stop")
+    buySection, buyBtn = s, self
+    buyTicker = C_Timer.NewTicker(1 / 3, buyTick)
+    buyTick()
+end
+
+local function onSectionAh(self)
+    local s = self.section
+    local list = DCR.CartItems()
+    local terms = {}
+    if list then
+        for _, entry in pairs(list) do
+            local rec = DCR.PriceFor(entry.itemID)
+            if s.match(entry) and entry.itemID and not (rec and (rec.price or rec.costs)) then
+                local name = ahName(entry)
+                if name then
+                    table.insert(terms, { searchString = name, quantity = entry.qty })
+                end
+            end
+        end
+    end
+    ahSearch(terms)
+end
+
+-- One collapsible header per section. The title row toggles the rows below
+-- it, the right edge carries the section's own buy and AH search buttons.
+local function makeSectionHeader(s)
+    local h = CreateFrame("Button", nil, listContent)
+    h:SetHeight(24)
+    h.title = label(h, "", GOLD)
+    h.title:SetPoint("LEFT", 2, 0)
+    h:SetScript("OnClick", function()
+        local cart = DCR.CartDB()
+        if cart then
+            cart.collapsed[s.key] = not cart.collapsed[s.key] or nil
+            refresh()
+        end
+    end)
+    h.buy = flatButton(h, "Buy all", 60)
+    h.buy:SetHeight(18)
+    h.buy:SetPoint("RIGHT", -2, 0)
+    h.buy.section = s
+    addArmSweep(h.buy)
+    h.buy:SetScript("OnClick", onSectionBuy)
+    h.ah = flatButton(h, "AH", 34)
+    h.ah:SetHeight(18)
+    h.ah:SetPoint("RIGHT", -2, 0)
+    h.ah.section = s
+    h.ah:SetScript("OnClick", onSectionAh)
+    h.ah:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Search the auction house for this section's unpriced items")
+        GameTooltip:Show()
+    end)
+    h.ah:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    h:Hide()
+    return h
+end
 
 local function rowEntry(row)
     local list = DCR.CartItems()
@@ -768,13 +1044,22 @@ local function onDropZoneClick()
     end
 end
 
+local WIN_NAME = "DecorShoppingCart"
+
 local function build()
     -- stayOpen: the cart has to survive entering the house editor.
-    panel = DCR.Window("DecorShoppingCart", 400, 620, "Shopping Cart", true)
+    panel = DCR.Window(WIN_NAME, 400, 620, "Shopping Cart", true)
 
-    -- resizable from the corner, everything inside follows its anchors
+    -- resizable from the corner, everything inside follows its anchors. The
+    -- caps: enough width for five columns (68 is the window chrome around
+    -- the list) and seven tenths of the screen tall.
     panel:SetResizable(true)
-    panel:SetResizeBounds(340, 420)
+    panel:SetResizeBounds(340, 420, 5 * COL_W + 4 * COL_GAP + 68, UIParent:GetHeight() * 0.7)
+    -- a saved size from before these caps existed restores unbounded, so
+    -- rein it in here rather than waiting for the next grip drag
+    local minW, minH, maxW, maxH = panel:GetResizeBounds()
+    local w, h = panel:GetSize()
+    panel:SetSize(math.min(math.max(w, minW), maxW), math.min(math.max(h, minH), maxH))
     local grip = CreateFrame("Button", nil, panel)
     grip:SetSize(16, 16)
     grip:SetPoint("BOTTOMRIGHT", -4, 4)
@@ -800,7 +1085,7 @@ local function build()
     dropZone = CreateFrame("Button", nil, panel, "BackdropTemplate")
     dropZone:SetPoint("TOPLEFT", 18, -56)
     dropZone:SetPoint("TOPRIGHT", -18, -56)
-    dropZone:SetHeight(64)
+    dropZone:SetHeight(76)
     dropZone:SetBackdrop({ bgFile = DCR.WHITE, edgeFile = DCR.WHITE, edgeSize = 1 })
     dropZone:SetBackdropColor(0.1, 0.1, 0.13, 1)
     dropZone:SetScript("OnClick", onDropZoneClick)
@@ -837,9 +1122,17 @@ local function build()
     catalogLink:SetPoint("TOPLEFT", dropText, "BOTTOMLEFT", 0, -3)
 
     dyeLink = goldLink("or pick a dye", function()
+        if DCR.HideBlueprintPicker then
+            DCR.HideBlueprintPicker() -- shares the cart's right edge
+        end
         DCR.ToggleDyeCatalog(panel)
     end)
     dyeLink:SetPoint("LEFT", catalogLink, "RIGHT", 10, 0)
+
+    bpLink = goldLink("or add from a blueprint", function()
+        DCR.ToggleBlueprintPicker(panel)
+    end)
+    bpLink:SetPoint("TOPLEFT", catalogLink, "BOTTOMLEFT", 0, -3)
 
     bounce = dropZone:CreateAnimationGroup()
     local dip = bounce:CreateAnimation("Translation")
@@ -854,128 +1147,26 @@ local function build()
 
     local box
     box, listContent = DCR.ScrollBox(panel)
-    box:SetPoint("TOPLEFT", 18, -132)
+    box:SetPoint("TOPLEFT", 18, -144)
     box:SetPoint("BOTTOMRIGHT", -18, 46)
+    -- reflow the columns while the window is dragged wider or narrower, but
+    -- not when refresh itself sets the content height
+    listContent:SetScript("OnSizeChanged", function(self)
+        if math.abs(self:GetWidth() - (lastLayoutW or 0)) > 0.5 then
+            refresh()
+        end
+    end)
+
+    for _, s in ipairs(SECTIONS) do
+        s.header = makeSectionHeader(s)
+    end
 
     local clearBtn = flatButton(panel, "Clear all", 90)
     clearBtn:SetPoint("BOTTOMRIGHT", -18, 16)
 
-    -- buys one carted item three times a second from the open vendor,
-    -- two-click confirm, turns into Stop while running
-    buyAllBtn = flatButton(panel, "Buy all", 90)
-    buyAllBtn:SetPoint("RIGHT", clearBtn, "LEFT", -8, 0)
-    buyAllBtn:Hide()
-
-    -- same slot as Buy all, they show at different NPCs
-    searchAhBtn = flatButton(panel, "Search AH", 90)
-    searchAhBtn:SetHeight(22)
-    searchAhBtn:SetPoint("RIGHT", clearBtn, "LEFT", -8, 0)
-    searchAhBtn:Hide()
-    searchAhBtn:SetScript("OnClick", function()
-        local list = DCR.CartItems()
-        local terms = {}
-        if list then
-            for _, entry in pairs(list) do
-                local rec = DCR.PriceFor(entry.itemID)
-                if entry.itemID and not (rec and (rec.price or rec.costs)) then
-                    local name = ahName(entry)
-                    if name then
-                        table.insert(terms, { searchString = name, quantity = entry.qty })
-                    end
-                end
-            end
-        end
-        ahSearch(terms)
-    end)
-
-    -- While the confirm is armed, a gold line runs clockwise around the
-    -- border, showing how long the second click has before it lapses.
-    local function armEdge(point, vertical)
-        local t = buyAllBtn:CreateTexture(nil, "OVERLAY")
-        t:SetColorTexture(GOLD[1], GOLD[2], GOLD[3])
-        t:SetPoint(point)
-        if vertical then
-            t:SetWidth(1)
-        else
-            t:SetHeight(1)
-        end
-        t:Hide()
-        return t
-    end
-    local edgeTop = armEdge("TOPLEFT")
-    local edgeRight = armEdge("TOPRIGHT", true)
-    local edgeBottom = armEdge("BOTTOMRIGHT")
-    local edgeLeft = armEdge("BOTTOMLEFT", true)
-
-    local function seg(t, len, vertical)
-        if len > 0 then
-            t:Show()
-            if vertical then
-                t:SetHeight(len)
-            else
-                t:SetWidth(len)
-            end
-        else
-            t:Hide()
-        end
-    end
-
-    -- OnUpdate only while armed, takes itself down when the window lapses
-    local function armSweep(self)
-        local p = (GetTime() - self.armedAt) / ARM_SECS
-        if not self.armed or p >= 1 then
-            self:SetScript("OnUpdate", nil)
-            edgeTop:Hide()
-            edgeRight:Hide()
-            edgeBottom:Hide()
-            edgeLeft:Hide()
-            return
-        end
-        local w, h = self:GetWidth(), self:GetHeight()
-        local run = p * 2 * (w + h)
-        seg(edgeTop, math.min(run, w))
-        seg(edgeRight, math.min(run - w, h), true)
-        seg(edgeBottom, math.min(run - w - h, w))
-        seg(edgeLeft, math.min(run - 2 * w - h, h), true)
-    end
-
-    buyAllBtn:SetScript("OnClick", function(self)
-        if buyTicker then
-            stopBuying("stopped.")
-            return
-        end
-        if not self.armed then
-            self.armed = true
-            self.armedAt = GetTime()
-            self.text:SetText("Really?")
-            self:SetScript("OnUpdate", armSweep)
-            local units = 0
-            local list = DCR.CartItems()
-            if list then
-                for recordID, entry in pairs(list) do
-                    if DCR.MerchantSlotFor(recordID) then
-                        units = units + entry.qty
-                    end
-                end
-            end
-            DCR.Print(("this vendor covers %d planned buys, click again to get them at 3 a second."):format(units))
-            C_Timer.After(ARM_SECS, function()
-                if self.armed then
-                    self.armed = nil
-                    self.text:SetText("Buy all")
-                end
-            end)
-            return
-        end
-        self.armed = nil
-        self.text:SetText("Stop")
-        buyTicker = C_Timer.NewTicker(1 / 3, buyTick)
-        buyTick()
-    end)
-
     countText = label(panel, "", DIM)
     countText:SetPoint("BOTTOMLEFT", 18, 20)
-    countText:SetPoint("RIGHT", buyAllBtn, "LEFT", -8, 0)
+    countText:SetPoint("RIGHT", clearBtn, "LEFT", -8, 0)
     countText:SetJustifyH("LEFT")
     countText:SetWordWrap(false)
 
@@ -1066,6 +1257,19 @@ local function build()
 
     paintDropZone()
     panel:Hide()
+end
+
+-- /cart reset also works before the window was ever opened, then only the
+-- saved rect needs clearing
+function DCR.ResetCart()
+    if panel then
+        panel:ResetRect()
+        return
+    end
+    local rects = DCR.WindowDB()
+    if rects then
+        rects[WIN_NAME] = nil
+    end
 end
 
 function DCR.OpenCart()

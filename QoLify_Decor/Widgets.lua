@@ -10,6 +10,15 @@ DCR.WHITE = WHITE
 DCR.COLOR_GOLD = { 1, 0.82, 0 }
 DCR.COLOR_DIM = { 0.66, 0.66, 0.7 }
 
+-- Icon for a cart entry or a catalog info, whichever field it carries.
+function DCR.SetIcon(tex, t)
+    if t.iconAtlas then
+        tex:SetAtlas(t.iconAtlas)
+    else
+        tex:SetTexture(t.icon or t.iconTexture or 134400)
+    end
+end
+
 function DCR.Label(parent, text, color, template)
     local fs = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormal")
     fs:SetText(text)
@@ -187,6 +196,32 @@ function DCR.Window(name, width, height, titleText, stayOpen)
     close:SetScript("OnClick", function()
         panel:Hide()
     end)
+
+    -- The way back when a resize or drag lands the window somewhere
+    -- hopeless. The glued side panels hide this and follow the cart.
+    local reset = DCR.FlatButton(panel, "Reset", 56)
+    reset:SetPoint("RIGHT", close, "LEFT", -6, 0)
+    reset:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Back to the default size and spot")
+        GameTooltip:Show()
+    end)
+    reset:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    function panel:ResetRect()
+        local rects = DCR.WindowDB()
+        if rects then
+            rects[name] = nil
+        end
+        self:SetSize(width, height)
+        self:ClearAllPoints()
+        self:SetPoint("CENTER")
+    end
+    reset:SetScript("OnClick", function()
+        panel:ResetRect()
+    end)
+    panel.resetBtn = reset
 
     local divider = panel:CreateTexture(nil, "ARTWORK")
     divider:SetColorTexture(DCR.COLOR_GOLD[1], DCR.COLOR_GOLD[2], DCR.COLOR_GOLD[3], 0.25)

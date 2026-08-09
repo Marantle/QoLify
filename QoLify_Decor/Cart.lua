@@ -180,12 +180,16 @@ function DCR.RebuildCartLookup()
     local priceDB = DCR.CartDB().prices
     for recordID, entry in pairs(list) do
         hasItems = true
-        -- Dye keys are strings ("dye" plus the color ID), decor recordIDs
-        -- are numbers. Dyes carted by early builds saved no dye flag, so it
-        -- gets re-stamped from the key, which also keeps the catalog query
-        -- below away from dye keys (it errors on non-numeric recordIDs).
-        if not entry.dye and type(recordID) == "string" then
+        -- Dyes carted by early builds saved no dye flag, so it gets
+        -- re-stamped from their "dye..." keys. Blueprint rows also key as
+        -- strings ("bp:" prefix), hence the pattern and not a type check.
+        if not entry.dye and type(recordID) == "string" and recordID:match("^dye") then
             entry.dye = true
+        end
+        -- the flag rides the bp: key now, so rows flagged before that go
+        -- back to being hand rows
+        if entry.bp and not tostring(recordID):find("^bp:") then
+            entry.bp = nil
         end
         -- item names are cold for a moment after login, so a dye row picks
         -- its real one up on a later rebuild
@@ -200,7 +204,8 @@ function DCR.RebuildCartLookup()
         local rec = entry.itemID and priceDB[entry.itemID]
         if not entry.dye and (not entry.itemID or not rec or rec.estimated) then
             local info = C_HousingCatalog.GetCatalogEntryInfo({
-                recordID = recordID,
+                -- blueprint rows carry the catalog id apart from their key
+                recordID = entry.baseID or recordID,
                 entryType = Enum.HousingCatalogEntryType.Decor,
                 entrySubtype = Enum.HousingCatalogEntrySubtype.Unowned,
                 subtypeIdentifier = 0,
@@ -220,7 +225,18 @@ function DCR.RebuildCartLookup()
             end
         end
         if entry.itemID then
-            byItemID[entry.itemID] = entry
+            -- an item can have two rows, hand-picked and blueprint. The
+            -- hand-picked one goes first, purchases deplete it first.
+            local itemRows = byItemID[entry.itemID]
+            if not itemRows then
+                itemRows = {}
+                byItemID[entry.itemID] = itemRows
+            end
+            if entry.bp then
+                itemRows[#itemRows + 1] = entry
+            else
+                table.insert(itemRows, 1, entry)
+            end
             -- prices lived on the entries for a short while, move them over
             if entry.price or entry.costs then
                 priceDB[entry.itemID] = priceDB[entry.itemID] or { price = entry.price, costs = entry.costs }
@@ -300,27 +316,41 @@ function DCR.CartHasItems()
     return hasItems
 end
 
--- itemInfo is an itemID or link. Matching by itemID covers the common case,
+-- itemInfo is an itemID or link. Returns the item's cart rows (hand-picked
+-- first, then blueprint) or nil. Matching by itemID covers the common case,
 -- but catalog entries do not always name their item, so a miss falls back
 -- to resolving the item to its catalog recordID, which every entry has. A
--- hit patches the entry so the next match is a plain lookup again.
-function DCR.CartEntryForItem(itemInfo)
+-- hit patches the rows so the next match is a plain lookup again.
+function DCR.CartRowsForItem(itemInfo)
     if not (hasItems and itemInfo) then
         return nil
     end
     local itemID = (C_Item.GetItemInfoInstant(itemInfo))
-    local entry = itemID and byItemID[itemID]
-    if entry or unresolved == 0 then
-        return entry
+    local itemRows = itemID and byItemID[itemID]
+    if itemRows or unresolved == 0 then
+        return itemRows
     end
     local info = C_HousingCatalog.GetCatalogEntryInfoByItem(itemInfo)
     local list = items()
-    entry = info and list and list[info.recordID]
-    if entry and itemID then
-        entry.itemID = itemID
-        DCR.RebuildCartLookup()
+    if not (info and list) then
+        return nil
     end
-    return entry
+    local recordID = info.entryID.recordID
+    local manual, bp = list[recordID], list["bp:" .. recordID]
+    if itemID and ((manual and not manual.itemID) or (bp and not bp.itemID)) then
+        if manual and not manual.itemID then
+            manual.itemID = itemID
+        end
+        if bp and not bp.itemID then
+            bp.itemID = itemID
+        end
+        DCR.RebuildCartLookup()
+        return byItemID[itemID]
+    end
+    if manual or bp then
+        return { manual or bp, manual and bp or nil }
+    end
+    return nil
 end
 
 function DCR.CartItems()
@@ -358,6 +388,10 @@ function DCR.AddCartEntry(info, count)
         }
         list[info.recordID] = entry
     end
+    -- blueprint rows key with a bp: prefix and flag themselves, so the same
+    -- item can sit in the blueprint section and a hand-picked one at once
+    entry.bp = info.bp and true or entry.bp
+    entry.baseID = info.baseID or entry.baseID
     -- The add already holds the full catalog info, so the estimate from its
     -- sourceText is free. changed() would only redo the catalog query.
     local cart = DCR.CartDB()
@@ -373,6 +407,18 @@ function DCR.AddCartEntry(info, count)
     return entry
 end
 
+-- The cart row shape for a dye's consumable item. Blueprint.lua uses it too,
+-- since blueprints hand dyes over as bare itemIDs.
+function DCR.DyeItemInfo(itemID, name)
+    return {
+        recordID = "dyeitem" .. itemID,
+        name = C_Item.GetItemNameByID(itemID) or name,
+        itemID = itemID,
+        iconTexture = C_Item.GetItemIconByID(itemID),
+        dye = true,
+    }
+end
+
 -- Dyes come from the customize mode picker as DyeColorDisplayInfo, not catalog
 -- entries. The item keys the row (one thing to buy), and shades ride along so
 -- multiple colors from one item don't create duplicate rows.
@@ -380,17 +426,33 @@ function DCR.AddDyeEntry(info, count)
     if not (info and info.itemID) then
         return nil
     end
-    local entry = DCR.AddCartEntry({
-        recordID = "dyeitem" .. info.itemID,
-        name = C_Item.GetItemNameByID(info.itemID) or info.name,
-        itemID = info.itemID,
-        iconTexture = C_Item.GetItemIconByID(info.itemID),
-        dye = true,
-    }, count)
+    local entry = DCR.AddCartEntry(DCR.DyeItemInfo(info.itemID, info.name), count)
     if entry then
         noteShade(entry, info.ID)
     end
     return entry
+end
+
+-- Bulk adds from a blueprint must be idempotent, so a second click cannot
+-- double an order. Raises an existing row to the wanted count instead of
+-- stacking, and returns how many pieces that actually added plus the row.
+function DCR.TopUpCartEntry(info, wanted)
+    local list = items()
+    if not (list and info and info.recordID) then
+        return 0, nil
+    end
+    local entry = list[info.recordID]
+    if not entry then
+        entry = DCR.AddCartEntry(info, wanted)
+        return entry and wanted or 0, entry
+    end
+    if entry.qty >= wanted then
+        return 0, entry
+    end
+    local delta = wanted - entry.qty
+    entry.qty = wanted
+    changed()
+    return delta, entry
 end
 
 function DCR.SetCartQty(recordID, qty)
@@ -431,40 +493,54 @@ function DCR.SetCartBuyMessages(on)
 end
 
 -- Ticks a carted item off, whether from a vendor buy or a bag arrival. The
--- entry drops off the list once the planned quantity is covered, which also
--- removes the vendor tooltip line.
+-- hand-picked row depletes before the blueprint one, and a row drops off
+-- the list once its planned quantity is covered, which also removes the
+-- vendor tooltip line.
 function DCR.RecordCartPurchase(itemInfo, count)
     local list = items()
-    local entry = DCR.CartEntryForItem(itemInfo)
-    if not (list and entry) then
+    local itemRows = DCR.CartRowsForItem(itemInfo)
+    if not (list and itemRows) then
         return
     end
-    entry.qty = entry.qty - (count or 1)
-    if entry.qty > 0 then
-        if DCR.RefreshCartUI then
-            DCR.RefreshCartUI()
+    local left = count or 1
+    local removed = false
+    for _, entry in ipairs(itemRows) do
+        if left <= 0 then
+            break
         end
-        return
+        local take = math.min(entry.qty, left)
+        entry.qty = entry.qty - take
+        left = left - take
+        if entry.qty <= 0 then
+            list[entry.recordID] = nil
+            removed = true
+            if DCR.CartBuyMessagesOn() then
+                DCR.Print((entry.name or "an item") .. " crossed off the shopping list.")
+            end
+        end
     end
-    list[entry.recordID] = nil
-    if DCR.CartBuyMessagesOn() then
-        DCR.Print((entry.name or "an item") .. " crossed off the shopping list.")
+    -- plain decrements skip the full rebuild, Buy all fires these three
+    -- times a second
+    if removed then
+        changed()
+    elseif DCR.RefreshCartUI then
+        DCR.RefreshCartUI()
     end
-    changed()
 end
 
 -- Merchant.lua routes vendor buys through here. The note lets the bag diff
 -- recognize the incoming item as already handled, and it expires quietly
 -- when a learn-on-buy piece never shows up in the bags at all.
 function DCR.NoteVendorPurchase(itemInfo, count)
-    local entry = DCR.CartEntryForItem(itemInfo)
-    if entry and entry.itemID then
-        local note = expected[entry.itemID]
+    local itemRows = DCR.CartRowsForItem(itemInfo)
+    local itemID = itemRows and itemRows[1] and itemRows[1].itemID
+    if itemID then
+        local note = expected[itemID]
         if note then
             note.n = note.n + count
             note.t = GetTime()
         else
-            expected[entry.itemID] = { n = count, t = GetTime() }
+            expected[itemID] = { n = count, t = GetTime() }
         end
     end
     DCR.RecordCartPurchase(itemInfo, count)

@@ -53,9 +53,13 @@ local function cartLine(tooltip, data)
         local index = merchantIndexForTooltip(tooltip)
         itemInfo = index and GetMerchantItemLink(index)
     end
-    local entry = DCR.CartEntryForItem(itemInfo)
-    if entry then
-        tooltip:AddLine(("Shopping cart: buy %d"):format(entry.qty), 1, 0.82, 0)
+    local itemRows = DCR.CartRowsForItem(itemInfo)
+    if itemRows then
+        local qty = 0
+        for _, entry in ipairs(itemRows) do
+            qty = qty + entry.qty
+        end
+        tooltip:AddLine(("Shopping cart: buy %d"):format(qty), 1, 0.82, 0)
         tooltip:Show()
     end
 end
@@ -134,8 +138,8 @@ function DCR.ScanMerchantPrices()
     for i = 1, GetMerchantNumItems() or 0 do
         local link = GetMerchantItemLink(i)
         -- carted non-decor (dyes) get priced too, decor gets priced always
-        local entry = link and DCR.CartEntryForItem(link)
-        if entry or isHousingDecor(link) then
+        local itemRows = link and DCR.CartRowsForItem(link)
+        if itemRows or isHousingDecor(link) then
             local itemID = C_Item.GetItemInfoInstant(link)
             if itemID then
                 local rec = cart.prices[itemID]
@@ -150,8 +154,11 @@ function DCR.ScanMerchantPrices()
                 rec.costs = slotCosts(i)
                 rec.estimated = nil -- live vendor data beats the sourceText estimate
             end
-            if entry then
-                slotByRecordID[entry.recordID] = i
+            if itemRows then
+                -- both of an item's rows get their Buy button
+                for _, entry in ipairs(itemRows) do
+                    slotByRecordID[entry.recordID] = i
+                end
             end
         end
     end
@@ -198,18 +205,69 @@ priceWatcher:SetScript("OnEvent", function(_, event)
     end
 end)
 
+-- With full bags a buy can still go through when the piece is learn-on-buy
+-- (straight to the catalog, no bag space needed), or bounce off the server
+-- with the inventory error and cost nothing. The hook fires either way, so
+-- those buys wait here for proof. A housing storage update confirms them,
+-- and the error throws them away and stops a running Buy all.
+local pendingBuys = {}
+local buyWatcher = CreateFrame("Frame")
+
+local function freeBagSlots()
+    local free = 0
+    for bag = 0, 4 do
+        local n, family = C_Container.GetContainerNumFreeSlots(bag)
+        if family == 0 then
+            free = free + (n or 0)
+        end
+    end
+    return free
+end
+
+buyWatcher:SetScript("OnEvent", function(self, event, _, errText)
+    -- an unconfirmed buy that saw neither signal (some other buy error)
+    -- goes quietly stale instead of stealing a later storage update
+    local now = GetTime()
+    while pendingBuys[1] and now - pendingBuys[1].t > 3 do
+        table.remove(pendingBuys, 1)
+    end
+    if #pendingBuys > 0 then
+        if event == "HOUSING_STORAGE_UPDATED" then
+            local buy = table.remove(pendingBuys, 1)
+            DCR.NoteVendorPurchase(buy.link, buy.n)
+            if buy.copper then
+                DCR.RecordDecorPurchase(buy.copper, buy.link)
+            end
+        elseif event == "UI_ERROR_MESSAGE" and errText == ERR_INV_FULL then
+            wipe(pendingBuys)
+            DCR.StopBuyAll("stopped, your bags are full.")
+        end
+    end
+    if #pendingBuys == 0 then
+        self:UnregisterAllEvents()
+    end
+end)
+
 -- Record decor spend and tick off the shopping list when an item is bought.
--- The merchant UI buys through the global BuyMerchantItem; C_MerchantFrame
--- has no buy function to hook.
+-- The merchant UI buys through the global BuyMerchantItem, and
+-- C_MerchantFrame has no buy function to hook.
 hooksecurefunc("BuyMerchantItem", function(index, quantity)
     local link = GetMerchantItemLink(index)
     if not link then
         return
     end
-    DCR.NoteVendorPurchase(link, quantity or 1)
-    if not isHousingDecor(link) then
+    local copper
+    if isHousingDecor(link) then
+        copper = (merchantPrice(index) or 0) * (quantity or 1)
+    end
+    if freeBagSlots() == 0 then
+        pendingBuys[#pendingBuys + 1] = { link = link, n = quantity or 1, copper = copper, t = GetTime() }
+        buyWatcher:RegisterEvent("HOUSING_STORAGE_UPDATED")
+        buyWatcher:RegisterEvent("UI_ERROR_MESSAGE")
         return
     end
-    local price = merchantPrice(index) or 0
-    DCR.RecordDecorPurchase(price * (quantity or 1), link)
+    DCR.NoteVendorPurchase(link, quantity or 1)
+    if copper then
+        DCR.RecordDecorPurchase(copper, link)
+    end
 end)

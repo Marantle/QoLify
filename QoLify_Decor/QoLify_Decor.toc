@@ -17,5 +17,6 @@ Cart.lua
 CartWindow.lua
 DyeCatalog.lua
 Catalog.lua
+Blueprint.lua
 Merchant.lua
 Host_Module.lua

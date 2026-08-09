@@ -30,13 +30,16 @@ from the catalog. At a vendor, carted items get a "buy N" line on their tooltips
 counts down as you buy, with buy buttons in the cart for whatever that vendor stocks.
 Pieces without a vendor get crossed off too, however they land in your bags, and at
 the auction house the cart grows search buttons for them, nicest with Auctionator
-installed. The spend watcher is the budget half: pick a per-item gold cap and
+installed. The list sorts itself into decor, dye and blueprint sections, and from
+patch 12.1 a blueprint carts itself, with buttons on Blizzard's blueprint window
+and a picker in the cart that grab every missing piece in one click.
+The spend watcher is the budget half: pick a per-item gold cap and
 anything priced above it gets a red warning on its vendor tooltip, buy it anyway and
 you get a note in chat, and a running total tracks what decor has cost you.
 
 Both also exist as standalone addons
 ([SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid),
-[Decor Tools](https://www.curseforge.com/wow/addons/decor-spendwatch)). If you
+[Decor Tools](https://www.curseforge.com/wow/addons/qolify-decor-tools)). If you
 already run the standalone, the QoLify module stands by and lets it work. Your settings
 copy over by themselves the first time you log out with both installed, and from then
 on removing the standalone hands everything to the module. Just don't uninstall the

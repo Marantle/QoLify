@@ -3,7 +3,7 @@
 A modular collection of quality-of-life addons for WoW retail (Interface 120007 /
 Midnight). This one repo ships three CurseForge artifacts: the QoLify suite, plus
 standalone [SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid) and
-[Decor Spendwatch](https://www.curseforge.com/wow/addons/decor-spendwatch).
+[Decor Tools](https://www.curseforge.com/wow/addons/qolify-decor-tools).
 
 The core addon draws the settings panel and carries the small QoL tweaks. Bigger
 features are **LoadOnDemand modules**: none of their code is loaded until you enable
@@ -38,11 +38,18 @@ respects and never force-loads.
   module stands by and mirrors its settings. Remove the standalone and the module takes
   over with the same settings. `/ss` opens its window. The QoLify minimap button replaces the
   standalone's own.
-- **Decor Spendwatch**: a gold budget for housing decor, with a red tooltip warning on
-  decor over your per-item cap plus spend tracking with chat summaries. Same code and
-  SavedVariables as the standalone addon, with the same standby behaviour: it stands by
-  while the standalone addon is enabled and takes over with the same data once it is
-  removed. `/dsw` opens its settings. The QoLify minimap button replaces the
+- **Decor Tools** (formerly Decor Spendwatch): housing decor helpers. The shopping
+  cart is a wish list you fill while decorating, with + buttons on catalog entries, a
+  drop box for the piece selected in the house editor, dye carting from the game's dye
+  picker and a paint catalog of every dye beside the cart. The list sorts itself into
+  decor, dye and blueprint sections, carted items learn vendor prices and grow buy
+  buttons and tooltip reminders at vendors, the auction house covers the rest, and
+  from patch 12.1 whole blueprints cart their missing pieces in one click. The spend
+  watcher is a gold budget on top: a red tooltip warning on decor over your per-item
+  cap plus spend tracking with chat summaries. Same code and SavedVariables as the
+  standalone addon, with the same standby behaviour: it stands by while the standalone
+  addon is enabled and takes over with the same data once it is removed. `/cart` opens
+  the cart and `/dsw` the settings. The QoLify minimap button replaces the
   standalone's own.
 
 ## Slash commands
@@ -50,7 +57,9 @@ respects and never force-loads.
 - `/qolify` opens the settings panel
 - `/qolify version` prints the addon version
 - `/ss` (or `/soundscaper`) opens SoundScaper once its module or standalone is active
-- `/dsw` opens Decor Spendwatch once its module or standalone is active
+- `/dsw` opens the Decor Tools settings once its module or standalone is active
+- `/cart` toggles the Decor Tools shopping cart, `/cart reset` puts the window back to
+  its default size and spot
 
 ## One repo, three addons
 

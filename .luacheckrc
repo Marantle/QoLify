@@ -28,6 +28,8 @@ globals = {
     "SLASH_QLFCART1",
     "SLASH_CART1",
     "DecorSpendwatch_OnAddonCompartmentClick",
+    -- gets our cart buttons written onto it (Blueprint.lua)
+    "HousingBlueprintContentListFrame",
     -- The Party Keys QoL feature registers its own popup dialog
     "StaticPopupDialogs",
 }
@@ -130,6 +132,11 @@ read_globals = {
     "HouseEditorFrame",
     "HousingDashboardFrame",
     "DyeSelectionPopout",
+    "C_HousingBlueprint",
+    "C_Container",
+    "ERR_INV_FULL",
+    "YES",
+    "CANCEL",
     "C_DyeColor",
     "GetMouseFoci",
     "C_AuctionHouse",

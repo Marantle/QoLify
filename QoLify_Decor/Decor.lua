@@ -248,6 +248,9 @@ function DCR.HandleCartSlash(input)
     local cmd = (input or ""):lower():match("^%s*(%S*)")
     if cmd == "version" then
         msg("v" .. DCR.VERSION)
+    elseif cmd == "reset" and DCR.ResetCart then
+        DCR.ResetCart()
+        msg("cart window back to its default size and spot.")
     elseif DCR.OpenCart then
         DCR.OpenCart()
     end
@@ -281,6 +284,7 @@ function DCR.InitCore()
     cart.items = cart.items or {}
     cart.prices = cart.prices or {} -- [itemID] = { price, costs }, learned at vendors
     cart.pending = cart.pending or {} -- [itemID] = n, AH buys ticked off, delivery not landed yet
+    cart.collapsed = cart.collapsed or {} -- [section key] = true while folded shut
     if cart.buyMessages == nil then
         cart.buyMessages = true
     end
@@ -290,4 +294,5 @@ function DCR.InitCore()
     DCR.RebuildCartLookup()
     DCR.WarmCatalog()
     DCR.CatalogInit()
+    DCR.BlueprintInit()
 end

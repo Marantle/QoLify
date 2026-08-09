@@ -192,6 +192,7 @@ local function build(cart)
     panel:SetParent(cart)
     panel:SetClampedToScreen(false)
     panel:RegisterForDrag()
+    panel.resetBtn:Hide()
     panel:ClearAllPoints()
     panel:SetPoint("TOPLEFT", cart, "TOPRIGHT")
     panel:SetPoint("BOTTOMLEFT", cart, "BOTTOMRIGHT")
@@ -201,6 +202,12 @@ local function build(cart)
     box:SetPoint("BOTTOMRIGHT", -18, 16)
 
     fillList(content)
+end
+
+function DCR.HideDyeCatalog()
+    if panel then
+        panel:Hide()
+    end
 end
 
 function DCR.ToggleDyeCatalog(cart)
