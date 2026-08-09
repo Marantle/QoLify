@@ -640,6 +640,35 @@ function createRow()
     row.cost:SetJustifyH("LEFT")
     row.cost:SetWordWrap(false)
 
+    -- hovering the icon shows the item's own tooltip, when the entry has
+    -- resolved to an item at all
+    local iconHover = CreateFrame("Frame", nil, row)
+    iconHover:SetAllPoints(row.icon)
+    iconHover:EnableMouse(true)
+    iconHover:SetScript("OnEnter", function(self)
+        local entry = rowEntry(row)
+        if not (entry and entry.itemID) then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetItemByID(entry.itemID)
+        -- one item, several colors: say which ones this row was built from
+        local shades = entry.shades
+        if shades and #shades > 1 then
+            local names = {}
+            for _, id in ipairs(shades) do
+                local dye = C_DyeColor.GetDyeColorInfo(id)
+                names[#names + 1] = dye and dye.name
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Carted for " .. table.concat(names, ", "), 1, 1, 1, true)
+        end
+        GameTooltip:Show()
+    end)
+    iconHover:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
     -- hovering the cost line names the currency (with the full currency
     -- tooltip when there is exactly one)
     local costHover = CreateFrame("Frame", nil, row)
@@ -690,6 +719,18 @@ local function addResolved(entry)
     return added
 end
 
+-- 12.1 swaps GetDyeColorForItem for GetDyeColorsForItem, which returns the
+-- item's whole dye list (a dozen since the consolidation). Any of them keys
+-- the same cart entry, so the first will do. Drop the fallback once 12.1 is
+-- the only client left.
+local function dyeForItem(link)
+    if C_DyeColor.GetDyeColorsForItem then
+        local ids = C_DyeColor.GetDyeColorsForItem(link)
+        return ids and ids[1]
+    end
+    return C_DyeColor.GetDyeColorForItem(link)
+end
+
 local function addFromCursor()
     local kind, _, cursorLink = GetCursorInfo()
     if kind ~= "item" then
@@ -701,7 +742,7 @@ local function addFromCursor()
         ClearCursor()
         return true
     end
-    local dyeColorID = cursorLink and C_DyeColor.GetDyeColorForItem(cursorLink)
+    local dyeColorID = cursorLink and dyeForItem(cursorLink)
     local added = dyeColorID and DCR.AddDyeEntry(C_DyeColor.GetDyeColorInfo(dyeColorID))
     if added then
         playFx(added)

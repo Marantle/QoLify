@@ -53,11 +53,17 @@ local function UnitNames(unit)
     return Ambiguate(full, "none"), full
 end
 
--- AstralKeys stamps entries with a region week number. Older entries are keys
--- from previous resets that no longer exist.
-local REGION_WEEK_EPOCH = { 1500390000, 1500505200, 1500447600, 1500505200, 1500505200 }
+-- AstralKeys entries carry a region week number, weeks counted from a fixed
+-- anchor per region (US for regions without one of their own). Entries from
+-- earlier weeks are keys from previous resets that no longer exist.
 local function CurrentWeek()
-    local epoch = REGION_WEEK_EPOCH[GetCurrentRegion() or 1] or REGION_WEEK_EPOCH[1]
+    local region = GetCurrentRegion()
+    local epoch = 1500390000 -- US
+    if region == 3 then
+        epoch = 1500447600 -- EU
+    elseif region == 4 then
+        epoch = 1500505200 -- TW
+    end
     return math.floor((GetServerTime() - epoch) / 604800)
 end
 

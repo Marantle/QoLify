@@ -117,6 +117,57 @@ end
 -- Wipes and refills rather than replacing, so Merchant.lua never holds a
 -- stale reference. Entries missing their itemID get one more catalog query
 -- here, since catalog data can be incomplete right after login.
+local function noteShade(entry, dyeColorID)
+    local shades = entry.shades
+    if not shades then
+        shades = {}
+        entry.shades = shades
+    end
+    for _, id in ipairs(shades) do
+        if id == dyeColorID then
+            return
+        end
+    end
+    shades[#shades + 1] = dyeColorID
+end
+
+-- Dye rows used to be keyed by color, from when a color was its own item.
+-- Now the item keys them, so old rows move over and the ones landing on the
+-- same item merge. so migrate for version
+local function migrateDyes(list)
+    local old
+    for recordID in pairs(list) do
+        if type(recordID) == "string" and recordID:match("^dye%d+$") then
+            old = old or {}
+            old[#old + 1] = recordID
+        end
+    end
+    if not old then
+        return
+    end
+    for _, recordID in ipairs(old) do
+        local entry = list[recordID]
+        local info = C_DyeColor.GetDyeColorInfo(tonumber(recordID:match("%d+")))
+        -- a color the client no longer knows leaves its row alone
+        if info and info.itemID then
+            local key = "dyeitem" .. info.itemID
+            local target = list[key]
+            if target then
+                target.qty = (target.qty or 1) + (entry.qty or 1)
+            else
+                entry.recordID = key
+                entry.itemID = info.itemID
+                entry.name = C_Item.GetItemNameByID(info.itemID) or entry.name
+                entry.icon = C_Item.GetItemIconByID(info.itemID) or entry.icon
+                list[key] = entry
+                target = entry
+            end
+            noteShade(target, info.ID)
+            list[recordID] = nil
+        end
+    end
+end
+
 function DCR.RebuildCartLookup()
     wipe(byItemID)
     hasItems = false
@@ -125,6 +176,7 @@ function DCR.RebuildCartLookup()
     if not list then
         return
     end
+    migrateDyes(list)
     local priceDB = DCR.CartDB().prices
     for recordID, entry in pairs(list) do
         hasItems = true
@@ -134,6 +186,11 @@ function DCR.RebuildCartLookup()
         -- below away from dye keys (it errors on non-numeric recordIDs).
         if not entry.dye and type(recordID) == "string" then
             entry.dye = true
+        end
+        -- item names are cold for a moment after login, so a dye row picks
+        -- its real one up on a later rebuild
+        if entry.dye and entry.itemID then
+            entry.name = C_Item.GetItemNameByID(entry.itemID) or entry.name
         end
         -- One catalog query covers the gaps: a missing itemID, a missing
         -- price, or a price that is still just an estimate (estimates get
@@ -145,6 +202,8 @@ function DCR.RebuildCartLookup()
             local info = C_HousingCatalog.GetCatalogEntryInfo({
                 recordID = recordID,
                 entryType = Enum.HousingCatalogEntryType.Decor,
+                entrySubtype = Enum.HousingCatalogEntrySubtype.Unowned,
+                subtypeIdentifier = 0,
             })
             if info then
                 if not entry.itemID then
@@ -314,23 +373,24 @@ function DCR.AddCartEntry(info, count)
     return entry
 end
 
--- Dyes are not catalog entries (Enum.HousingCatalogEntryType has no dye
--- member), they come from the customize mode dye picker as a
--- DyeColorDisplayInfo. The consumable item carries everything that matters
--- (vendor matching, the bag diff, prices), the prefixed key just keeps dye
--- IDs from colliding with decor recordIDs. There is no sourceText to parse,
--- so a dye's price only appears once a vendor selling it is visited.
+-- Dyes come from the customize mode picker as DyeColorDisplayInfo, not catalog
+-- entries. The item keys the row (one thing to buy), and shades ride along so
+-- multiple colors from one item don't create duplicate rows.
 function DCR.AddDyeEntry(info, count)
     if not (info and info.itemID) then
         return nil
     end
-    return DCR.AddCartEntry({
-        recordID = "dye" .. info.ID,
-        name = info.name,
+    local entry = DCR.AddCartEntry({
+        recordID = "dyeitem" .. info.itemID,
+        name = C_Item.GetItemNameByID(info.itemID) or info.name,
         itemID = info.itemID,
         iconTexture = C_Item.GetItemIconByID(info.itemID),
         dye = true,
     }, count)
+    if entry then
+        noteShade(entry, info.ID)
+    end
+    return entry
 end
 
 function DCR.SetCartQty(recordID, qty)
@@ -520,6 +580,8 @@ function DCR.ResolveDecor(info)
     local entry = C_HousingCatalog.GetCatalogEntryInfo({
         recordID = info.decorID,
         entryType = Enum.HousingCatalogEntryType.Decor,
+        entrySubtype = Enum.HousingCatalogEntrySubtype.Unowned,
+        subtypeIdentifier = 0,
     })
     if entry and (not info.name or entry.name == info.name) then
         return entry

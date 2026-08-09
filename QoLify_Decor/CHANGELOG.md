@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.1
+- Ready for patch 12.1. The game renames the lookup that turns a dye item
+  into its colors there, and dropping a dye on the cart now works with both
+  the old and the new name, so nothing breaks on patch day.
+
 ## 2.2.0
 - The cart carries its own paint catalog now. The "pick a dye" link slides
   it out beside the cart with every dye in the picker's categories, so dyes

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1
+- Ready for patch 12.1. The Decor Tools cart now works with the renamed dye
+  lookup coming in that patch, and every part of the suite is flagged for the
+  12.1 client. Nothing changes on current servers.
+
 ## 1.2.0
 - Decor Tools module 2.1.0: dyes join the shopping cart, carted items get
   crossed off wherever they come from (auction wins, crafting, trades, not
