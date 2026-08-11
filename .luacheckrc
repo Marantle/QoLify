@@ -136,6 +136,7 @@ read_globals = {
     "C_Container",
     "ERR_INV_FULL",
     "YES",
+    "OKAY",
     "CANCEL",
     "C_DyeColor",
     "GetMouseFoci",

@@ -26,7 +26,7 @@ a change made in the game's own audio options is picked up by the section you ar
 fill while decorating: hit the + on catalog entries, drop the piece you have selected
 in the house editor straight into the cart window, or cart dyes from the dye picker
 and the cart's own paint catalog. It remembers quantities and shows price estimates
-from the catalog. At a vendor, carted items get a "buy N" line on their tooltips that
+from the catalog, with the planned total colored by what you can actually afford. At a vendor, carted items get a "buy N" line on their tooltips that
 counts down as you buy, with buy buttons in the cart for whatever that vendor stocks.
 Pieces without a vendor get crossed off too, however they land in your bags, and at
 the auction house the cart grows search buttons for them, nicest with Auctionator

@@ -18,7 +18,9 @@ cart with every dye instead.
 Carted items show their price. The catalog gives an estimate, marked with ~,
 and visiting a vendor that sells a piece records its real cost, whether gold,
 a currency, barter items or a mix. Hover a cost icon to see what it is, and
-the footer sums up what the whole plan will run you.
+the footer sums up what the whole plan will run you, each part of the sum
+green while you can cover it and red once you cannot. Hover the sum to put
+what you carry beside what the cart asks for.
 
 The list keeps itself sorted into sections, decor, dyes and blueprint
 pieces, each collapsible behind its header. Drag the window wider and the
@@ -28,7 +30,10 @@ At a vendor, anything from your list gets a "buy N" tooltip line that counts
 down as you buy. Rows grow a Buy button for items the open vendor sells,
 walking up to a vendor that stocks your items opens the cart by itself, and
 each section's Buy all fetches everything it can at three purchases a
-second, with a confirm click first so it never runs by accident.
+second, with a confirm click first so it never runs by accident. Hover that
+button to price up what this vendor has of the section, colored the same
+way, and if your purse falls short it says what is missing and how many
+items will go through before it buys anything.
 
 Pieces without a vendor still get ticked off: an auction win pulled from the
 mailbox, a crafted piece, a trade, anything that lands in your bags counts

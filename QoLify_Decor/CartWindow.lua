@@ -8,6 +8,11 @@ local GOLD = DCR.COLOR_GOLD
 local DIM = DCR.COLOR_DIM
 local label, flatButton = DCR.Label, DCR.FlatButton
 
+-- What the purse covers and what it does not, in the footer sum and in its
+-- tooltip (which needs the same two as plain colors).
+local OK_HEX, SHORT_HEX = "|cff59d96a", "|cffff5959"
+local OK_RGB, SHORT_RGB = { 0.35, 0.85, 0.42 }, { 1, 0.35, 0.35 }
+
 local ROW_H = 66
 local DYE_ROW_H = 46 -- dye rows carry a small icon and pack tighter
 local ARM_SECS = 4 -- how long the Buy all confirm click stays armed
@@ -21,8 +26,9 @@ local bounce -- drop zone thump, played when an added icon lands in it
 local rows = {}
 local createRow
 local pending -- catalog entry for the decor currently selected in the editor
-local buyTicker, buySection, buyBtn -- the running section buy, and whose button started it
-local lastKnownCost, lastCurrencyTotals -- what the footer currently sums, for its tooltip
+local buyTicker, buyBtn, buyQueue -- the running section buy, whose button started it, and its rows
+local lastKnownCost, lastCurrencyTotals, lastCount = 0, {}, 0 -- what the footer sums, for its tints and tooltip
+local lastUnpriced -- whether part of the cart is still waiting for a price
 local lastLayoutW -- list width at the last refresh, reflow only on real change
 
 -- The list splits into these sections, each under its own collapsible header
@@ -85,6 +91,28 @@ local function costText(entry)
     return (rec.estimated and "~" or "") .. table.concat(parts, " + ")
 end
 
+-- Costs key on their currency, and the barter kind on the item they charge,
+-- so two rows paying with the same thing land on one tally.
+local function costKey(c)
+    return c.currencyID or c.link or c.label or "?"
+end
+
+-- How much of a cost's currency the player carries. Barter costs charge an
+-- item instead, so those count the bags. A cost naming neither is unknown,
+-- and unknown never holds a buy back.
+local function heldFor(c)
+    if c.currencyID then
+        local cur = C_CurrencyInfo.GetCurrencyInfo(c.currencyID)
+        return cur and cur.quantity
+    end
+    local itemID = c.link and (C_Item.GetItemInfoInstant(c.link))
+    return itemID and C_Item.GetItemCount(itemID) or nil
+end
+
+local function tint(ok, text)
+    return (ok and OK_HEX or SHORT_HEX) .. text .. "|r"
+end
+
 -- Auto-buy: one carted item at a time while the vendor stays open, scoped to
 -- the section whose header button started it.
 local function stopBuying(msg)
@@ -92,7 +120,7 @@ local function stopBuying(msg)
         buyTicker:Cancel()
         buyTicker = nil
     end
-    buySection = nil
+    buyQueue = nil
     if buyBtn then
         buyBtn.armed = nil
         buyBtn.text:SetText("Buy all")
@@ -113,24 +141,126 @@ local function affordable(rec)
     end
     if rec.costs then
         for _, c in ipairs(rec.costs) do
-            if c.currencyID then
-                local cur = C_CurrencyInfo.GetCurrencyInfo(c.currencyID)
-                if cur and cur.quantity < c.amount then
-                    return false
-                end
+            local held = heldFor(c)
+            if held and held < c.amount then
+                return false
             end
         end
     end
     return true
 end
 
+-- Rows sort by when they were added, both in the list and in a buy run.
+local function byAge(a, b)
+    if a.addedAt ~= b.addedAt then
+        return (a.addedAt or 0) < (b.addedAt or 0)
+    end
+    -- dye keys are strings, decor keys numbers, so compare as text
+    return tostring(a.recordID) < tostring(b.recordID)
+end
+
+-- The rows a Buy all works through: the section's carted items this vendor
+-- actually stocks, in the order the window lists them.
+local function buyableRows(s)
+    local stocked = {}
+    local list = DCR.CartItems()
+    if list then
+        for recordID, entry in pairs(list) do
+            if entry.qty > 0 and s.match(entry) and DCR.MerchantSlotFor(recordID) then
+                stocked[#stocked + 1] = entry
+            end
+        end
+    end
+    table.sort(stocked, byAge)
+    return stocked
+end
+
+-- A dry run of that walk, for the warning the Buy all button raises: how
+-- many of the planned buys the purse covers here, and what buying the lot
+-- would need on top of what the player carries. Funds only ever drop during
+-- a run, so a row that cannot be paid for now stays skipped, which is where
+-- the ticker ends up too.
+local function buyPlan(s)
+    local plan = { total = 0, afford = 0, gold = 0, shortGold = 0, short = {} }
+    local purse = GetMoney()
+    local left = {} -- what is left of each currency as the run spends it, false when unknown
+    local need, order = {}, {}
+    for _, entry in ipairs(buyableRows(s)) do
+        local rec = DCR.PriceFor(entry.itemID)
+        local price = rec and rec.price or 0
+        local costs = rec and rec.costs
+        plan.total = plan.total + entry.qty
+        plan.gold = plan.gold + price * entry.qty
+        if costs then
+            for _, c in ipairs(costs) do
+                local key = costKey(c)
+                local t = need[key]
+                if not t then
+                    t = { amount = 0, label = c.label, icon = c.icon, held = heldFor(c) or false }
+                    need[key] = t
+                    order[#order + 1] = t
+                    left[key] = t.held
+                end
+                t.amount = t.amount + c.amount * entry.qty
+            end
+        end
+        local bought = 0
+        while bought < entry.qty and purse >= price do
+            local pays = true
+            if costs then
+                for _, c in ipairs(costs) do
+                    local have = left[costKey(c)]
+                    if have and have < c.amount then
+                        pays = false
+                    end
+                end
+            end
+            if not pays then
+                break
+            end
+            purse = purse - price
+            if costs then
+                for _, c in ipairs(costs) do
+                    local key = costKey(c)
+                    if left[key] then
+                        left[key] = left[key] - c.amount
+                    end
+                end
+            end
+            bought = bought + 1
+        end
+        plan.afford = plan.afford + bought
+    end
+    plan.shortGold = math.max(0, plan.gold - GetMoney())
+    plan.needs = order
+    for _, t in ipairs(order) do
+        if t.held and t.amount > t.held then
+            plan.short[#plan.short + 1] = { amount = t.amount - t.held, label = t.label }
+        end
+    end
+    return plan
+end
+
+-- One "this is the bill, this is your purse" tooltip line, tinted by whether
+-- it is covered. Held goes in nil when teh amount could not be read at all,
+-- and the line stays plain then.
+local function costLine(need, held, ok)
+    if not held then
+        GameTooltip:AddLine(need, 1, 1, 1)
+        return
+    end
+    local c = ok and OK_RGB or SHORT_RGB
+    GameTooltip:AddDoubleLine(need, "you have " .. held, 1, 1, 1, c[1], c[2], c[3])
+end
+
 local function buyTick()
     local list = DCR.CartItems()
     local blocked = false
-    if list then
-        for recordID, entry in pairs(list) do
-            if entry.qty > 0 and (not buySection or buySection.match(entry)) then
-                local slot = DCR.MerchantSlotFor(recordID)
+    if list and buyQueue then
+        for _, entry in ipairs(buyQueue) do
+            -- a row the player pulls off the list mid-run drops out here
+            if entry.qty > 0 and list[entry.recordID] == entry then
+                local slot = DCR.MerchantSlotFor(entry.recordID)
                 if slot then
                     if affordable(DCR.PriceFor(entry.itemID)) then
                         BuyMerchantItem(slot, 1)
@@ -142,6 +272,15 @@ local function buyTick()
         end
     end
     stopBuying(blocked and "stopped, the rest is not affordable right now." or "shopping list done at this vendor.")
+end
+
+local function startBuying(s, btn)
+    btn.armed = nil
+    btn.text:SetText("Stop")
+    buyBtn = btn
+    buyQueue = buyableRows(s)
+    buyTicker = C_Timer.NewTicker(1 / 3, buyTick)
+    buyTick()
 end
 
 -- Little flourish: the added decor's icon tumbles into the cart from a random
@@ -496,6 +635,30 @@ local function layoutRow(row, entry, x, y, w)
     return y + h
 end
 
+-- The footer line: the item count, then every cost tinted by whether the
+-- purse covers it. Prices get learned at vendors, so the sum stays marked
+-- partial until every item has been seen at one. Kept apart from the refresh
+-- because money and currencies move without the cart changing.
+local function paintTotals()
+    if not countText then
+        return
+    end
+    local parts = {}
+    if lastKnownCost > 0 then
+        parts[1] = tint(GetMoney() >= lastKnownCost, DCR.Money(lastKnownCost, 16))
+    end
+    for _, t in ipairs(lastCurrencyTotals) do
+        local held = heldFor(t)
+        local text = t.icon and (t.amount .. " |T" .. t.icon .. ":16|t") or (t.amount .. " " .. (t.label or "?"))
+        parts[#parts + 1] = held and tint(held >= t.amount, text) or text
+    end
+    local text = lastCount == 1 and "1 item planned" or (lastCount .. " items planned")
+    if #parts > 0 then
+        text = text .. ", " .. table.concat(parts, " + ") .. (lastUnpriced and " so far" or "")
+    end
+    countText:SetText(text)
+end
+
 local function refresh()
     if not panel then
         return
@@ -515,13 +678,6 @@ local function refresh()
             end
         end
     end
-    local function byAge(a, b)
-        if a.addedAt ~= b.addedAt then
-            return (a.addedAt or 0) < (b.addedAt or 0)
-        end
-        -- dye keys are strings, decor keys numbers, so compare as text
-        return tostring(a.recordID) < tostring(b.recordID)
-    end
     -- A wide window keeps the sections stacked but flows each section's own
     -- rows into columns, one more per default-window's worth of width, so a
     -- lone section spreads out too. Headers span the whole width.
@@ -531,7 +687,7 @@ local function refresh()
     local colW = cols == 1 and contentW or math.floor((contentW - (cols - 1) * COL_GAP) / cols)
     local total = 0
     local knownCost = 0
-    local currencyTotals
+    local currencies, currencyOrder = {}, {}
     local unpriced = false
     local rowIndex = 0
     local y = 0
@@ -571,12 +727,18 @@ local function refresh()
                 end
                 if rec and rec.costs then
                     for _, c in ipairs(rec.costs) do
-                        currencyTotals = currencyTotals or {}
-                        local key = c.label or c.icon or "?"
-                        local t = currencyTotals[key]
+                        local key = costKey(c)
+                        local t = currencies[key]
                         if not t then
-                            t = { amount = 0, icon = c.icon, label = c.label }
-                            currencyTotals[key] = t
+                            t = {
+                                amount = 0,
+                                icon = c.icon,
+                                label = c.label,
+                                currencyID = c.currencyID,
+                                link = c.link,
+                            }
+                            currencies[key] = t
+                            currencyOrder[#currencyOrder + 1] = t
                         end
                         t.amount = t.amount + c.amount * entry.qty
                     end
@@ -636,33 +798,12 @@ local function refresh()
         rows[i]:Hide()
     end
     listContent:SetHeight(math.max(1, y))
-    -- Prices get learned at vendors, so the sum is marked partial until
-    -- every item has been seen at one.
-    local parts = {}
-    if knownCost > 0 then
-        table.insert(parts, DCR.Money(knownCost, 16))
-    end
-    if currencyTotals then
-        local names = {}
-        for name in pairs(currencyTotals) do
-            table.insert(names, name)
-        end
-        table.sort(names)
-        for _, name in ipairs(names) do
-            local t = currencyTotals[name]
-            if t.icon then
-                table.insert(parts, t.amount .. " |T" .. t.icon .. ":16|t")
-            else
-                table.insert(parts, t.amount .. " " .. name)
-            end
-        end
-    end
-    local text = total == 1 and "1 item planned" or (total .. " items planned")
-    if #parts > 0 then
-        text = text .. ", " .. table.concat(parts, " + ") .. (unpriced and " so far" or "")
-    end
-    countText:SetText(text)
-    lastKnownCost, lastCurrencyTotals = knownCost, currencyTotals
+    table.sort(currencyOrder, function(a, b)
+        return (a.label or "") < (b.label or "")
+    end)
+    lastKnownCost, lastCurrencyTotals, lastCount = knownCost, currencyOrder, total
+    lastUnpriced = unpriced
+    paintTotals()
 end
 DCR.RefreshCartUI = refresh
 
@@ -720,28 +861,122 @@ local function addArmSweep(btn)
     end
 end
 
+local POPUP_SHORT = "DECOR_TOOLS_CART_BUY_SHORT"
+local POPUP_NONE = "DECOR_TOOLS_CART_BUY_NONE"
+
+local function joinAnd(parts)
+    if #parts < 2 then
+        return parts[1] or ""
+    end
+    return table.concat(parts, ", ", 1, #parts - 1) .. " and " .. parts[#parts]
+end
+
+local function stockLine(s, plan)
+    return ("This vendor stocks %d planned %s in %s."):format(
+        plan.total,
+        plan.total == 1 and "item" or "items",
+        s.phrase
+    )
+end
+
+-- What the warning popup says when the purse cannot cover the whole section.
+local function planText(s, plan)
+    local missing = {}
+    if plan.shortGold > 0 then
+        missing[1] = DCR.Money(plan.shortGold)
+    end
+    for _, t in ipairs(plan.short) do
+        missing[#missing + 1] = t.amount .. " " .. (t.label or "unknown currency")
+    end
+    if plan.afford == 0 then
+        return stockLine(s, plan) .. "\n\nYou are short " .. joinAnd(missing) .. ", so none of them can be bought yet."
+    end
+    return stockLine(s, plan)
+        .. "\n\nBuying them all needs another "
+        .. joinAnd(missing)
+        .. ", so only "
+        .. plan.afford
+        .. " of them will go through. Buy those now?"
+end
+
+-- Registered when the window is first built, so a standing-by module never
+-- writes into the global dialog list.
+local function registerPopups()
+    StaticPopupDialogs[POPUP_SHORT] = {
+        text = "%s",
+        button1 = "Buy",
+        button2 = CANCEL,
+        OnAccept = function(_, data)
+            startBuying(data.section, data.btn)
+        end,
+        timeout = 0,
+        hideOnEscape = true,
+    }
+    StaticPopupDialogs[POPUP_NONE] = {
+        text = "%s",
+        button1 = OKAY,
+        timeout = 0,
+        hideOnEscape = true,
+    }
+end
+
+-- Hovering a section's Buy all prices up this vendor's share of it, tinted
+-- the way the footer sum is.
+local function onSectionBuyEnter(self)
+    local s = self.section
+    local plan = buyPlan(s)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("Buy all")
+    GameTooltip:AddLine(stockLine(s, plan), 1, 1, 1, true)
+    if plan.gold > 0 then
+        local money = GetMoney()
+        costLine(DCR.Money(plan.gold), DCR.Money(money), money >= plan.gold)
+    end
+    for _, t in ipairs(plan.needs) do
+        costLine(
+            t.amount .. " " .. (t.label or "Unknown currency"),
+            t.held and tostring(t.held),
+            t.held and t.held >= t.amount
+        )
+    end
+    if plan.afford < plan.total then
+        local line = plan.afford == 0 and "Not enough for any of them."
+            or ("Enough for %d of them."):format(plan.afford)
+        GameTooltip:AddLine(line, SHORT_RGB[1], SHORT_RGB[2], SHORT_RGB[3])
+    end
+    GameTooltip:Show()
+end
+
 local function onSectionBuy(self)
     if buyTicker then
         stopBuying("stopped.")
         return
     end
     local s = self.section
+    local plan = buyPlan(s)
+    -- Short somewhere, so the popup does the confirming instead of the two
+    -- click arm and says how far the money goes.
+    if plan.afford < plan.total then
+        self.armed = nil
+        self.text:SetText("Buy all")
+        StaticPopup_Show(
+            plan.afford > 0 and POPUP_SHORT or POPUP_NONE,
+            planText(s, plan),
+            nil,
+            { section = s, btn = self }
+        )
+        return
+    end
     if not self.armed then
         self.armed = true
         self.armedAt = GetTime()
         self.text:SetText("Really?")
         self:SetScript("OnUpdate", self.armSweep)
-        local units = 0
-        local list = DCR.CartItems()
-        if list then
-            for recordID, entry in pairs(list) do
-                if s.match(entry) and DCR.MerchantSlotFor(recordID) then
-                    units = units + entry.qty
-                end
-            end
-        end
         DCR.Print(
-            ("this vendor covers %d planned buys in %s, click again to get them at 3 a second."):format(units, s.phrase)
+            ("this vendor covers %d planned buys in %s, click again to get them at 3 a second."):format(
+                plan.total,
+                s.phrase
+            )
         )
         C_Timer.After(ARM_SECS, function()
             if self.armed then
@@ -751,11 +986,7 @@ local function onSectionBuy(self)
         end)
         return
     end
-    self.armed = nil
-    self.text:SetText("Stop")
-    buySection, buyBtn = s, self
-    buyTicker = C_Timer.NewTicker(1 / 3, buyTick)
-    buyTick()
+    startBuying(s, self)
 end
 
 local function onSectionAh(self)
@@ -796,6 +1027,10 @@ local function makeSectionHeader(s)
     h.buy.section = s
     addArmSweep(h.buy)
     h.buy:SetScript("OnClick", onSectionBuy)
+    h.buy:HookScript("OnEnter", onSectionBuyEnter)
+    h.buy:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     h.ah = flatButton(h, "AH", 34)
     h.ah:SetHeight(18)
     h.ah:SetPoint("RIGHT", -2, 0)
@@ -1047,6 +1282,7 @@ end
 local WIN_NAME = "DecorShoppingCart"
 
 local function build()
+    registerPopups()
     -- stayOpen: the cart has to survive entering the house editor.
     panel = DCR.Window(WIN_NAME, 400, 620, "Shopping Cart", true)
 
@@ -1175,18 +1411,22 @@ local function build()
     totalsHover:SetAllPoints(countText)
     totalsHover:EnableMouse(true)
     totalsHover:SetScript("OnEnter", function(self)
-        if not lastCurrencyTotals and (not lastKnownCost or lastKnownCost == 0) then
+        if lastKnownCost == 0 and #lastCurrencyTotals == 0 then
             return
         end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine("Planned total", GOLD[1], GOLD[2], GOLD[3])
-        if lastKnownCost and lastKnownCost > 0 then
-            GameTooltip:AddLine(DCR.Money(lastKnownCost), 1, 1, 1)
+        if lastKnownCost > 0 then
+            local money = GetMoney()
+            costLine(DCR.Money(lastKnownCost), DCR.Money(money), money >= lastKnownCost)
         end
-        if lastCurrencyTotals then
-            for _, t in pairs(lastCurrencyTotals) do
-                GameTooltip:AddLine(t.amount .. " " .. (t.label or "Unknown currency"), 1, 1, 1)
-            end
+        for _, t in ipairs(lastCurrencyTotals) do
+            local held = heldFor(t)
+            costLine(
+                t.amount .. " " .. (t.label or "Unknown currency"),
+                held and tostring(held),
+                held and held >= t.amount
+            )
         end
         GameTooltip:Show()
     end)
@@ -1234,13 +1474,19 @@ local function build()
     -- Selection watching only runs while the window is open. Outside the
     -- house editor the event never fires, so no further gating needed.
     local watcher = CreateFrame("Frame")
-    watcher:SetScript("OnEvent", function()
+    watcher:SetScript("OnEvent", function(_, event)
+        if event ~= "HOUSING_DECOR_SELECT_RESPONSE" then
+            paintTotals() -- the purse moved, so the tints do too
+            return
+        end
         local info = C_HousingDecor.GetSelectedDecorInfo()
         pending = info and DCR.ResolveDecor(info) or nil
         paintDropZone()
     end)
     panel:SetScript("OnShow", function()
         watcher:RegisterEvent("HOUSING_DECOR_SELECT_RESPONSE")
+        watcher:RegisterEvent("PLAYER_MONEY")
+        watcher:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
         local info = C_HousingDecor.GetSelectedDecorInfo()
         pending = info and DCR.ResolveDecor(info) or nil
         paintDropZone()
@@ -1249,7 +1495,7 @@ local function build()
         refresh()
     end)
     panel:SetScript("OnHide", function()
-        watcher:UnregisterEvent("HOUSING_DECOR_SELECT_RESPONSE")
+        watcher:UnregisterAllEvents()
         pending = nil
         paintDropZone()
         stopBuying() -- closing the window should not keep purchases running

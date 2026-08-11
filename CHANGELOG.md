@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+- Decor Tools module 2.3.0: blueprints can fill the shopping cart, the list
+  is split into collapsible sections that each buy and search on their own,
+  and the planned total is now colored by what you can actually afford, with
+  a warning before a Buy all that your purse cannot cover. Its own changelog
+  has the details.
+
 ## 1.2.1
 - Ready for patch 12.1. The Decor Tools cart now works with the renamed dye
   lookup coming in that patch, and every part of the suite is flagged for the

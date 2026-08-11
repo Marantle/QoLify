@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.3.0
+- Blueprints can fill the cart. Blizzard's blueprint window carries a "Cart
+  all" and a "Cart missing" button, and the cart itself has a blueprint
+  picker behind the "or add from a blueprint" link, so a whole build's worth
+  of decor and dye lands on the list in one click. Adding the same blueprint
+  again tops the rows up to what it needs instead of stacking on top, and
+  asks first if you really do want another full set.
+- The list is split into Decor, Dyes and From blueprints. Each section
+  collapses on its own and carries its own Buy all and auction house search.
+  Drag the cart wider and the rows flow into columns, up to five of them,
+  and the Reset button in the corner brings the window back if it ends up
+  somewhere unreachable.
+- The planned total now says whether you can pay it. Each part of the sum
+  is green while your purse covers it and red once it does not, and hovering
+  the total puts what you hold next to what the cart asks for.
+- Hovering a section's Buy all prices up what this vendor stocks from that
+  section, colored the same way. Clicking it while you cannot afford the lot
+  now says what you are short and how many items will go through before
+  anything is bought.
+
 ## 2.2.1
 - Ready for patch 12.1. The game renames the lookup that turns a dye item
   into its colors there, and dropping a dye on the cart now works with both
