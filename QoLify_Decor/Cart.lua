@@ -191,10 +191,11 @@ function DCR.RebuildCartLookup()
         if entry.bp and not tostring(recordID):find("^bp:") then
             entry.bp = nil
         end
-        -- item names are cold for a moment after login, so a dye row picks
-        -- its real one up on a later rebuild
+        -- item data is cold for a moment after login, so a dye row picks its
+        -- real name and icon up on a later rebuild
         if entry.dye and entry.itemID then
             entry.name = C_Item.GetItemNameByID(entry.itemID) or entry.name
+            entry.icon = entry.icon or C_Item.GetItemIconByID(entry.itemID)
         end
         -- One catalog query covers the gaps: a missing itemID, a missing
         -- price, or a price that is still just an estimate (estimates get
@@ -211,11 +212,9 @@ function DCR.RebuildCartLookup()
                 subtypeIdentifier = 0,
             })
             if info then
-                if not entry.itemID then
-                    entry.itemID = info.itemID
-                    entry.icon = entry.icon or info.iconTexture
-                    entry.iconAtlas = entry.iconAtlas or info.iconAtlas
-                end
+                entry.itemID = entry.itemID or info.itemID
+                entry.icon = entry.icon or info.iconTexture
+                entry.iconAtlas = entry.iconAtlas or info.iconAtlas
                 if entry.itemID then
                     rec = priceDB[entry.itemID]
                     if not rec or rec.estimated then
@@ -284,21 +283,32 @@ end
 -- some catalog UI happens to be opened. A one-shot background search (the
 -- same searcher Blizzard's catalog uses) warms the data at login, and the
 -- results callback reruns the rebuild to fill the gaps.
-local searcher
+local searcher, waiting = nil, {}
 
-function DCR.WarmCatalog()
-    local cart = DCR.CartDB()
-    if not cart or searcher or not C_HousingCatalog.CreateCatalogSearcher then
-        return
-    end
-    local needs = false
+local function cartNeedsWarm(cart)
     for _, entry in pairs(cart.items) do
         if not (entry.itemID and cart.prices[entry.itemID]) then
-            needs = true
-            break
+            return true
         end
     end
-    if not needs then
+    return false
+end
+
+-- The catalog also goes cold on a loading screen, so anything reading it
+-- directly (the blueprint picker) asks for a warm and hands in what to redo
+-- once the records land. Without a callback this is the login warm, which
+-- only bothers when the cart itself has gaps.
+function DCR.WarmCatalog(onWarm)
+    local cart = DCR.CartDB()
+    if not cart or not C_HousingCatalog.CreateCatalogSearcher then
+        return
+    end
+    if onWarm then
+        waiting[#waiting + 1] = onWarm
+    elseif not cartNeedsWarm(cart) then
+        return
+    end
+    if searcher then
         return
     end
     searcher = C_HousingCatalog.CreateCatalogSearcher()
@@ -307,6 +317,11 @@ function DCR.WarmCatalog()
         DCR.RebuildCartLookup()
         if DCR.RefreshCartUI then
             DCR.RefreshCartUI()
+        end
+        local done = waiting
+        waiting = {}
+        for _, fn in ipairs(done) do
+            fn()
         end
     end)
     searcher:RunSearch()

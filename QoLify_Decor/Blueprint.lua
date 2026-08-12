@@ -45,7 +45,9 @@ local function infoFor(ctype, entry)
         })
         -- catalog data can be cold, the cart's rebuild retries the itemID
         -- and price later
-        info = info or { recordID = entry.recordID, name = entry.name }
+        if not info then
+            info = { recordID = entry.recordID, name = entry.name, cold = true }
+        end
         info.baseID = info.recordID
     end
     info.recordID = "bp:" .. info.recordID
@@ -117,12 +119,31 @@ local function anyToCart(contentInfo, missingOnly)
     return any
 end
 
+local renderGen = 0 -- late icon data only paints the render it belongs to
+
+-- A dye's icon comes out of the item cache, which is empty for anything the
+-- player is not carrying until the client fetches it. That is where the row
+-- of question marks after a loading screen comes from, so the row draws the
+-- placeholder and repaints itself when the item lands.
 local function setIcon(tex, info)
     if info.iconAtlas then
         tex:SetAtlas(info.iconAtlas)
-    else
-        tex:SetTexture(info.iconTexture or 134400)
+        return
     end
+    if info.iconTexture then
+        tex:SetTexture(info.iconTexture)
+        return
+    end
+    tex:SetTexture(134400)
+    if not info.itemID then
+        return
+    end
+    local gen = renderGen
+    Item:CreateFromItemID(info.itemID):ContinueOnItemLoad(function()
+        if gen == renderGen then
+            tex:SetTexture(C_Item.GetItemIconByID(info.itemID))
+        end
+    end)
 end
 
 -- Buttons on Blizzard's blueprint contents window.
@@ -349,12 +370,15 @@ local function makeItemRow()
     return row
 end
 
-local function renderDetail(contentInfo, title)
+local function renderDetail(contentInfo, title, redrawn)
     shownContent = contentInfo
+    renderGen = renderGen + 1
+    local gen = renderGen
     detailTitle:SetText(title or "Blueprint")
     poolReset(itemRowPool)
     local y = 0
     local hasHouse = contentInfo.targetHouseGUID ~= nil
+    local cold = false
     eachBuyable(contentInfo, false, function(ctype, entry, wanted)
         local row = poolGet(itemRowPool, makeItemRow)
         row.ctype, row.entry = ctype, entry
@@ -363,6 +387,7 @@ local function renderDetail(contentInfo, title)
         row.wantAll = wanted
         row.wantMissing = (hasHouse and entry.numMissing > 0) and entry.numMissing or wanted
         local info = infoFor(ctype, entry)
+        cold = cold or info.cold
         row.itemID = info.itemID
         setIcon(row.icon, info)
         row.name:SetText(info.name or entry.name)
@@ -381,6 +406,17 @@ local function renderDetail(contentInfo, title)
     cartAllBtn:SetShown(anyToCart(contentInfo, false))
     cartMissingBtn:SetShown(hasHouse and anyToCart(contentInfo, true))
     showView(detailView)
+    -- A cold catalog answers every decor query with nil, which is the whole
+    -- page blank when the picker is opened straight off a loading screen. One
+    -- search fills it in and the page is drawn once more, whatever comes
+    -- back, so a piece the catalog simply does not carry cannot loop this.
+    if cold and not redrawn then
+        DCR.WarmCatalog(function()
+            if gen == renderGen and shownContent == contentInfo then
+                renderDetail(contentInfo, title, true)
+            end
+        end)
+    end
 end
 
 local function build(cart)

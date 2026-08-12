@@ -20,6 +20,7 @@ local COL_W = 332 -- the list width at the default 400 window, one column's cap
 local COL_GAP = 12
 
 local panel, dropZone, dropIcon, dropText, listContent, countText
+local updateParent -- built with the window, re-homes it as the editor comes and goes
 local fxLayer -- the flying icons draw here, above the windows they cross
 local catalogLink, dyeLink, bpLink -- gold links under the drop text, alternatives to dropping
 local bounce -- drop zone thump, played when an added icon lands in it
@@ -1454,7 +1455,7 @@ local function build()
     -- The editor hides the normal UI layer, so the window rides on
     -- HouseEditorFrame while that is shown and moves back to UIParent when
     -- it closes. Anchors stay on UIParent either way, so it keeps its spot.
-    local function updateParent()
+    function updateParent()
         local editor = HouseEditorFrame
         if editor and editor:IsShown() then
             if panel:GetParent() ~= editor then
@@ -1468,6 +1469,9 @@ local function build()
     end
     local modeWatcher = CreateFrame("Frame")
     modeWatcher:RegisterEvent("HOUSE_EDITOR_MODE_CHANGED")
+    -- Leaving the house takes the editor down without a mode change, and the
+    -- cart would sit invisible under a hidden parent until the next one.
+    modeWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
     modeWatcher:SetScript("OnEvent", updateParent)
     updateParent()
 
@@ -1518,14 +1522,18 @@ function DCR.ResetCart()
     end
 end
 
+-- Shown but not visible means the parent went down under it, so every way in
+-- re-homes the window first and reads visibility rather than the shown flag.
+-- Otherwise a hidden parent leaves the toggle flipping a flag nobody sees.
 function DCR.OpenCart()
     if not panel then
         build()
     end
-    if panel:IsShown() then
+    if panel:IsVisible() then
         panel:Hide()
         return
     end
+    updateParent()
     panel:Show() -- OnShow refreshes
 end
 
@@ -1535,15 +1543,14 @@ function DCR.ShowCart()
     if not panel then
         build()
     end
-    if not panel:IsShown() then
-        panel:Show()
-    end
+    updateParent()
+    panel:Show()
 end
 
 -- For Merchant.lua's vendor auto-open. Says whether it actually opened the
 -- window, so a cart the player already had up is not closed again on leave.
 function DCR.AutoShowCart()
-    if panel and panel:IsShown() then
+    if panel and panel:IsVisible() then
         return false
     end
     DCR.ShowCart()

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.1
+- Leaving your house left the shopping cart stuck out of sight. Neither /cart
+  nor the add buttons brought it back, and nothing complained about it. The
+  cart now comes up wherever you are.
+- Blueprint pieces came up as a page of question marks when the picker was
+  opened straight after a loading screen. The icons now arrive as the game
+  hands the data over, and a dye carted before its icon loaded no longer
+  keeps the question mark for good.
+
 ## 2.3.0
 - Blueprints can fill the cart. Blizzard's blueprint window carries a "Cart
   all" and a "Cart missing" button, and the cart itself has a blueprint

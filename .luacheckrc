@@ -109,6 +109,7 @@ read_globals = {
     -- Decor module
     "GetCoinTextureString",
     "C_Item",
+    "Item",
     "C_MerchantFrame",
     "GetMerchantItemLink",
     "GetMerchantNumItems",

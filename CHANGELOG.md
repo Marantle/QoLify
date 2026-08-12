@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1
+- Decor Tools module 2.3.1: the shopping cart no longer goes missing once you
+  leave your house, and blueprint pieces stop showing up as question marks.
+  Its own changelog has the details.
+
 ## 1.3.0
 - Decor Tools module 2.3.0: blueprints can fill the shopping cart, the list
   is split into collapsible sections that each buy and search on their own,
