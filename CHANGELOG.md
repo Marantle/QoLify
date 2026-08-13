@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.2
+- Decor Tools module 2.3.2: a shopping cart filled from a house-sized
+  blueprint looked empty even though the total counted everything in it, and
+  filling it took a while. Both are sorted. Its own changelog has the details.
+
 ## 1.3.1
 - Decor Tools module 2.3.1: the shopping cart no longer goes missing once you
   leave your house, and blueprint pieces stop showing up as question marks.
