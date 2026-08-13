@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.2
+- A blueprint the size of a whole house left the shopping cart looking empty.
+  The rows were there and the total counted them. Hovering one even brought
+  its tooltip up, but nothing drew. The list now builds only the rows that
+  fit on screen and reuses them as you scroll, so a couple of thousand pieces
+  sit in it as happily as ten. The blueprint picker's contents page had the
+  same trouble and got the same fix.
+- Carting a big blueprint was slow on top of that, because every piece
+  rebuilt the whole list on its way in. They all go on in one pass now. Past
+  five thousand pieces the cart buttons ask before filling the list that far.
+
 ## 2.3.1
 - Leaving your house left the shopping cart stuck out of sight. Neither /cart
   nor the add buttons brought it back, and nothing complained about it. The

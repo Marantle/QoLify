@@ -24,7 +24,7 @@ local updateParent -- built with the window, re-homes it as the editor comes and
 local fxLayer -- the flying icons draw here, above the windows they cross
 local catalogLink, dyeLink, bpLink -- gold links under the drop text, alternatives to dropping
 local bounce -- drop zone thump, played when an added icon lands in it
-local rows = {}
+local rowList -- the item rows, built and reused by the list as it scrolls
 local createRow
 local pending -- catalog entry for the decor currently selected in the editor
 local buyTicker, buyBtn, buyQueue -- the running section buy, whose button started it, and its rows
@@ -90,6 +90,17 @@ local function costText(entry)
     -- the ~ marks catalog estimates: reputation discounts and the like only
     -- show in the real price, learned once a vendor is actually visited
     return (rec.estimated and "~" or "") .. table.concat(parts, " + ")
+end
+
+-- Whether a vendor ever put a number on the item, estimate or confirmed.
+local function priced(rec)
+    return rec ~= nil and (rec.price or rec.costs) ~= nil
+end
+
+-- Nothing sells it that we know of, so the auction house is what the row can
+-- offer, and only while it is open.
+local function needsAH(entry)
+    return DCR.AuctionHouseOpen() and entry.itemID ~= nil and not priced(DCR.PriceFor(entry.itemID))
 end
 
 -- Costs key on their currency, and the barter kind on the item they charge,
@@ -616,14 +627,10 @@ local function ahSearch(terms)
     end
 end
 
--- Rows are laid out at a running offset because their heights differ by
--- kind, and the remove and buy buttons move in with the shorter dye row.
-local function layoutRow(row, entry, x, y, w)
-    local h = entry.dye and DYE_ROW_H or ROW_H
-    row:SetHeight(h)
-    row:SetWidth(w)
-    row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", x, -y)
+-- Dye rows are shorter than decor rows, so a row reused across the two kinds
+-- resizes its icon and slides its buttons up. The list handles where it sits
+-- and how big it is.
+local function shapeRow(row, entry)
     local icon = entry.dye and 35 or 60
     row.icon:SetSize(icon, icon)
     row.remove:ClearAllPoints()
@@ -633,7 +640,6 @@ local function layoutRow(row, entry, x, y, w)
     row.buy:SetPoint("BOTTOMRIGHT", -2, entry.dye and 4 or 6)
     row.ah:ClearAllPoints()
     row.ah:SetPoint("BOTTOMRIGHT", -2, entry.dye and 4 or 6)
-    return y + h
 end
 
 -- The footer line: the item count, then every cost tinted by whether the
@@ -658,6 +664,23 @@ local function paintTotals()
         text = text .. ", " .. table.concat(parts, " + ") .. (lastUnpriced and " so far" or "")
     end
     countText:SetText(text)
+end
+
+local function bindRow(row, entry)
+    row.recordID = entry.recordID
+    setIcon(row.icon, entry)
+    shapeRow(row, entry)
+    row.name:SetText(entry.name or ("decor " .. entry.recordID))
+    -- No itemID means no vendor to buy it from (yet), shown dimmed.
+    if entry.itemID then
+        row.name:SetTextColor(1, 1, 1)
+    else
+        row.name:SetTextColor(DIM[1], DIM[2], DIM[3])
+    end
+    row.qty:SetText("x" .. entry.qty)
+    row.cost:SetText(costText(entry))
+    row.buy:SetShown(DCR.MerchantSlotFor(entry.recordID) ~= nil)
+    row.ah:SetShown(needsAH(entry))
 end
 
 local function refresh()
@@ -690,8 +713,8 @@ local function refresh()
     local knownCost = 0
     local currencies, currencyOrder = {}, {}
     local unpriced = false
-    local rowIndex = 0
     local y = 0
+    rowList:Reset()
     local cart = DCR.CartDB()
     local collapsed = cart and cart.collapsed or {}
     for _, s in ipairs(SECTIONS) do
@@ -719,6 +742,7 @@ local function refresh()
             local cx, cy, tallest = 0, 0, 0
             local remH = totalH
             local secBuyable, secAH = false, false
+            rowList:Column()
             for _, entry in ipairs(s.entries) do
                 -- the footer always sums the whole cart, collapsed or not
                 total = total + entry.qty
@@ -744,48 +768,24 @@ local function refresh()
                         t.amount = t.amount + c.amount * entry.qty
                     end
                 end
-                if not (rec and (rec.price or rec.costs)) then
-                    unpriced = true
-                end
-                local buyable = DCR.MerchantSlotFor(entry.recordID) ~= nil
-                secBuyable = secBuyable or buyable
-                -- no vendor price known, so offer the auction house while
-                -- it is open
-                local ahable = DCR.AuctionHouseOpen() and entry.itemID ~= nil and not (rec and (rec.price or rec.costs))
-                secAH = secAH or ahable
+                unpriced = unpriced or not priced(rec)
+                secBuyable = secBuyable or DCR.MerchantSlotFor(entry.recordID) ~= nil
+                secAH = secAH or needsAH(entry)
                 if not closed then
-                    rowIndex = rowIndex + 1
-                    local row = rows[rowIndex]
-                    if not row then
-                        row = createRow()
-                        rows[rowIndex] = row
-                    end
-                    row.recordID = entry.recordID
-                    setIcon(row.icon, entry)
-                    cy = layoutRow(row, entry, cx * (colW + COL_GAP), y + cy, colW) - y
+                    local rowH = entry.dye and DYE_ROW_H or ROW_H
+                    rowList:Add(entry, cx * (colW + COL_GAP), y + cy, colW, rowH)
+                    cy = cy + rowH
                     tallest = math.max(tallest, cy)
                     -- spill once a column holds its share of what was left
                     -- when it started, so leftovers land in the front
                     -- columns and the tail never runs longest
-                    remH = remH - (entry.dye and DYE_ROW_H or ROW_H)
+                    remH = remH - rowH
                     if cy >= target and cx < cols - 1 then
                         cx = cx + 1
                         cy = 0
                         target = math.ceil(remH / (cols - cx))
+                        rowList:Column()
                     end
-                    row.name:SetText(entry.name or ("decor " .. entry.recordID))
-                    -- No itemID means no vendor to buy it from (yet), shown
-                    -- dimmed.
-                    if entry.itemID then
-                        row.name:SetTextColor(1, 1, 1)
-                    else
-                        row.name:SetTextColor(DIM[1], DIM[2], DIM[3])
-                    end
-                    row.qty:SetText("x" .. entry.qty)
-                    row.cost:SetText(costText(entry))
-                    row.buy:SetShown(buyable)
-                    row.ah:SetShown(ahable)
-                    row:Show()
                 end
             end
             -- A vendor and the AH cannot both be open, so the two header
@@ -795,9 +795,6 @@ local function refresh()
             y = y + tallest
         end
     end
-    for i = rowIndex + 1, #rows do
-        rows[i]:Hide()
-    end
     listContent:SetHeight(math.max(1, y))
     table.sort(currencyOrder, function(a, b)
         return (a.label or "") < (b.label or "")
@@ -805,6 +802,7 @@ local function refresh()
     lastKnownCost, lastCurrencyTotals, lastCount = knownCost, currencyOrder, total
     lastUnpriced = unpriced
     paintTotals()
+    rowList:Paint()
 end
 DCR.RefreshCartUI = refresh
 
@@ -996,8 +994,7 @@ local function onSectionAh(self)
     local terms = {}
     if list then
         for _, entry in pairs(list) do
-            local rec = DCR.PriceFor(entry.itemID)
-            if s.match(entry) and entry.itemID and not (rec and (rec.price or rec.costs)) then
+            if s.match(entry) and needsAH(entry) then
                 local name = ahName(entry)
                 if name then
                     table.insert(terms, { searchString = name, quantity = entry.qty })
@@ -1054,7 +1051,7 @@ local function rowEntry(row)
     return list and row.recordID and list[row.recordID]
 end
 
--- Position and size come from layoutRow on every refresh, since a reused
+-- Position and size come from the list on every paint, since a reused
 -- row can switch between the decor and dye shapes.
 function createRow()
     local row = CreateFrame("Frame", nil, listContent)
@@ -1382,10 +1379,11 @@ local function build()
     rise:SetOffset(0, 4)
     rise:SetSmoothing("OUT")
 
-    local box
-    box, listContent = DCR.ScrollBox(panel)
+    local box, scroll
+    box, listContent, scroll = DCR.ScrollBox(panel)
     box:SetPoint("TOPLEFT", 18, -144)
     box:SetPoint("BOTTOMRIGHT", -18, 46)
+    rowList = DCR.VirtualList(scroll, createRow, bindRow)
     -- reflow the columns while the window is dragged wider or narrower, but
     -- not when refresh itself sets the content height
     listContent:SetScript("OnSizeChanged", function(self)

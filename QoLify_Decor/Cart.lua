@@ -168,6 +168,11 @@ local function migrateDyes(list)
     end
 end
 
+-- Records the catalog has already answered for this session. Without it the
+-- estimate re-parse below asks again about every unconfirmed row on every
+-- rebuild, which on a blueprint-sized cart is thousands of queries per click.
+local queried = {}
+
 function DCR.RebuildCartLookup()
     wipe(byItemID)
     hasItems = false
@@ -203,7 +208,7 @@ function DCR.RebuildCartLookup()
         -- prices are final). Data can be cold (nil), then this retries on
         -- the next rebuild.
         local rec = entry.itemID and priceDB[entry.itemID]
-        if not entry.dye and (not entry.itemID or not rec or rec.estimated) then
+        if not entry.dye and not queried[recordID] and (not entry.itemID or not rec or rec.estimated) then
             local info = C_HousingCatalog.GetCatalogEntryInfo({
                 -- blueprint rows carry the catalog id apart from their key
                 recordID = entry.baseID or recordID,
@@ -212,6 +217,7 @@ function DCR.RebuildCartLookup()
                 subtypeIdentifier = 0,
             })
             if info then
+                queried[recordID] = true -- cold data returns nil, so that keeps retrying
                 entry.itemID = entry.itemID or info.itemID
                 entry.icon = entry.icon or info.iconTexture
                 entry.iconAtlas = entry.iconAtlas or info.iconAtlas
@@ -372,10 +378,34 @@ function DCR.CartItems()
     return items()
 end
 
+local batching = false
+
 local function changed()
+    if batching then
+        return
+    end
     DCR.RebuildCartLookup()
     if DCR.RefreshCartUI then
         DCR.RefreshCartUI()
+    end
+end
+
+-- A blueprint carts thousands of pieces one call at a time, and each of those
+-- would otherwise rebuild the lookup and redraw the window over the whole
+-- cart, so the work grows with the square of the list. Adds inside here settle
+-- up once at the end. The flag has to come back down even if the add throws,
+-- or the cart quietly stops updating for the rest of the session.
+function DCR.CartBatch(fn)
+    if batching then
+        return fn()
+    end
+    batching = true
+    local ok, err = pcall(fn)
+    batching = false
+    changed()
+    DCR.ScanMerchantPrices()
+    if not ok then
+        error(err, 0)
     end
 end
 
@@ -418,7 +448,9 @@ function DCR.AddCartEntry(info, count)
     end
     changed()
     -- Adding while standing at a vendor picks the price up right away.
-    DCR.ScanMerchantPrices()
+    if not batching then
+        DCR.ScanMerchantPrices()
+    end
     return entry
 end
 

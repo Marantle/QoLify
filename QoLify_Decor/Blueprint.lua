@@ -64,18 +64,20 @@ local function applyAdds(contentInfo, missingOnly, stack, fromBtn)
         return
     end
     local added, flown = 0, {}
-    eachBuyable(contentInfo, missingOnly, function(ctype, entry, wanted)
-        local n, row
-        if stack then
-            row = DCR.AddCartEntry(infoFor(ctype, entry), wanted)
-            n = row and wanted or 0
-        else
-            n, row = DCR.TopUpCartEntry(infoFor(ctype, entry), wanted)
-        end
-        added = added + n
-        if n > 0 and row then
-            flown[#flown + 1] = row
-        end
+    DCR.CartBatch(function()
+        eachBuyable(contentInfo, missingOnly, function(ctype, entry, wanted)
+            local n, row
+            if stack then
+                row = DCR.AddCartEntry(infoFor(ctype, entry), wanted)
+                n = row and wanted or 0
+            else
+                n, row = DCR.TopUpCartEntry(infoFor(ctype, entry), wanted)
+            end
+            added = added + n
+            if n > 0 and row then
+                flown[#flown + 1] = row
+            end
+        end)
     end)
     if added == 1 then
         DCR.Print("1 piece added to the shopping list.")
@@ -86,29 +88,62 @@ local function applyAdds(contentInfo, missingOnly, stack, fromBtn)
     DCR.CartFlyBurst(flown, fromBtn)
 end
 
+-- Past this many pieces the add is worth asking about first. The list itself
+-- handles them fine, but a shopping list that long is rarely what someone
+-- reaching for "Cart missing" had in mind.
+local BIG_ADD = 5000
+
+-- How many pieces the button would put on the list, which for a top up is
+-- only the shortfall on each row.
+local function addCount(contentInfo, missingOnly, stack)
+    local n = 0
+    eachBuyable(contentInfo, missingOnly, function(ctype, entry, wanted)
+        if stack then
+            n = n + wanted
+        else
+            local row = DCR.CartItems()[infoFor(ctype, entry).recordID]
+            n = n + math.max(0, wanted - (row and row.qty or 0))
+        end
+    end)
+    return n
+end
+
+-- Both ways into a bulk add come through here, so the size warning covers
+-- the plain click and the add-again confirm alike. Returns how many pieces
+-- the add came to, which is nothing when the list already holds them all.
+local function confirmAdds(contentInfo, missingOnly, stack, fromBtn)
+    local n = addCount(contentInfo, missingOnly, stack)
+    if n == 0 then
+        return 0
+    end
+    if n <= BIG_ADD then
+        applyAdds(contentInfo, missingOnly, stack, fromBtn)
+    else
+        StaticPopup_Show(
+            "DECOR_TOOLS_BLUEPRINT_BIG_ADD",
+            ("This puts %d pieces on the shopping list, and filling it may take a moment. Go ahead?"):format(n),
+            nil,
+            { contentInfo = contentInfo, missingOnly = missingOnly, stack = stack, fromBtn = fromBtn }
+        )
+    end
+    return n
+end
+
 local function cartPieces(contentInfo, missingOnly, fromBtn)
     if not (contentInfo and DCR.CartDB()) then
         return
     end
-    local wouldAdd = false
-    eachBuyable(contentInfo, missingOnly, function(ctype, entry, wanted)
-        local row = DCR.CartItems()[infoFor(ctype, entry).recordID]
-        if not (row and row.qty >= wanted) then
-            wouldAdd = true
-        end
-    end)
-    if wouldAdd then
-        applyAdds(contentInfo, missingOnly, false, fromBtn)
-    else
-        local text = missingOnly and "Every missing piece is already on the shopping list. Add them all again on top?"
-            or "Every piece of this blueprint is already on the shopping list. Add the full set again on top?"
-        StaticPopup_Show(
-            "DECOR_TOOLS_BLUEPRINT_ADD_AGAIN",
-            text,
-            nil,
-            { contentInfo = contentInfo, missingOnly = missingOnly, fromBtn = fromBtn }
-        )
+    if confirmAdds(contentInfo, missingOnly, false, fromBtn) > 0 then
+        return
     end
+    local text = missingOnly and "Every missing piece is already on the shopping list. Add them all again on top?"
+        or "Every piece of this blueprint is already on the shopping list. Add the full set again on top?"
+    StaticPopup_Show(
+        "DECOR_TOOLS_BLUEPRINT_ADD_AGAIN",
+        text,
+        nil,
+        { contentInfo = contentInfo, missingOnly = missingOnly, fromBtn = fromBtn }
+    )
 end
 
 local function anyToCart(contentInfo, missingOnly)
@@ -119,13 +154,16 @@ local function anyToCart(contentInfo, missingOnly)
     return any
 end
 
-local renderGen = 0 -- late icon data only paints the render it belongs to
+local renderGen = 0 -- a late catalog warm only redraws the page it belongs to
 
 -- A dye's icon comes out of the item cache, which is empty for anything the
 -- player is not carrying until the client fetches it. That is where the row
 -- of question marks after a loading screen comes from, so the row draws the
--- placeholder and repaints itself when the item lands.
-local function setIcon(tex, info)
+-- placeholder and repaints itself when the item lands. Rows get recycled as
+-- the list scrolls, so a load that took its time checks the row's itemID
+-- before painting over whatever is on it now.
+local function setIcon(row, info)
+    local tex = row.icon
     if info.iconAtlas then
         tex:SetAtlas(info.iconAtlas)
         return
@@ -135,13 +173,13 @@ local function setIcon(tex, info)
         return
     end
     tex:SetTexture(134400)
-    if not info.itemID then
+    local itemID = info.itemID
+    if not itemID then
         return
     end
-    local gen = renderGen
-    Item:CreateFromItemID(info.itemID):ContinueOnItemLoad(function()
-        if gen == renderGen then
-            tex:SetTexture(C_Item.GetItemIconByID(info.itemID))
+    Item:CreateFromItemID(itemID):ContinueOnItemLoad(function()
+        if row.itemID == itemID then
+            tex:SetTexture(C_Item.GetItemIconByID(itemID))
         end
     end)
 end
@@ -213,11 +251,13 @@ local collectionView, detailView
 local statusOverlay, statusText -- dims the blueprint list while a request runs
 local collectionContent, detailContent, detailTitle
 local cartAllBtn, cartMissingBtn
-local headerPool, bpRowPool, itemRowPool = {}, {}, {}
+local headerPool, bpRowPool = {}, {}
+local detailList -- the contents page, whose rows are built as they scroll into view
 local shownContent -- contents currently on the detail page
 local pendingCode, pendingTitle -- contents request in flight, and for whom
 
 local LIST_W = 252 -- window 320 minus margins, inset and scrollbar
+local ITEM_ROW_H = 26
 
 local function poolGet(pool, make)
     for _, w in ipairs(pool) do
@@ -312,7 +352,6 @@ end
 
 local function makeItemRow()
     local row = CreateFrame("Frame", nil, detailContent)
-    row:SetHeight(26)
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(20, 20)
     row.icon:SetPoint("LEFT", 2, 0)
@@ -370,39 +409,46 @@ local function makeItemRow()
     return row
 end
 
+local function bindItemRow(row, piece)
+    row.ctype, row.entry = piece.ctype, piece.entry
+    row.wantAll, row.wantMissing = piece.wantAll, piece.wantMissing
+    row.itemID = piece.info.itemID
+    setIcon(row, piece.info)
+    row.name:SetText(piece.info.name or piece.entry.name)
+    row.count:SetText(piece.count)
+end
+
 local function renderDetail(contentInfo, title, redrawn)
     shownContent = contentInfo
     renderGen = renderGen + 1
     local gen = renderGen
     detailTitle:SetText(title or "Blueprint")
-    poolReset(itemRowPool)
-    local y = 0
+    detailList:Reset()
     local hasHouse = contentInfo.targetHouseGUID ~= nil
     local cold = false
+    local n = 0
     eachBuyable(contentInfo, false, function(ctype, entry, wanted)
-        local row = poolGet(itemRowPool, makeItemRow)
-        row.ctype, row.entry = ctype, entry
-        -- plain click adds what is missing, ctrl the full count. With
-        -- nothing missing (or no house to compare) both add the full count.
-        row.wantAll = wanted
-        row.wantMissing = (hasHouse and entry.numMissing > 0) and entry.numMissing or wanted
         local info = infoFor(ctype, entry)
         cold = cold or info.cold
-        row.itemID = info.itemID
-        setIcon(row.icon, info)
-        row.name:SetText(info.name or entry.name)
         local count = "x" .. wanted
         if hasHouse and entry.numMissing > 0 then
             count = count .. " |cffff6060" .. entry.numMissing .. " missing|r"
         end
-        row.count:SetText(count)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", 0, -y)
-        row:SetWidth(LIST_W)
-        row:Show()
-        y = y + 26
+        local piece = {
+            ctype = ctype,
+            entry = entry,
+            info = info,
+            count = count,
+            -- plain click adds what is missing, ctrl the full count. With
+            -- nothing missing (or no house to compare) both add the full count.
+            wantAll = wanted,
+            wantMissing = (hasHouse and entry.numMissing > 0) and entry.numMissing or wanted,
+        }
+        detailList:Add(piece, 0, n * ITEM_ROW_H, LIST_W, ITEM_ROW_H)
+        n = n + 1
     end)
-    detailContent:SetHeight(math.max(1, y))
+    detailContent:SetHeight(math.max(1, n * ITEM_ROW_H))
+    detailList:Paint()
     cartAllBtn:SetShown(anyToCart(contentInfo, false))
     cartMissingBtn:SetShown(hasHouse and anyToCart(contentInfo, true))
     showView(detailView)
@@ -473,9 +519,11 @@ local function build(cart)
     detailTitle:SetPoint("RIGHT", 0, 0)
     detailTitle:SetJustifyH("LEFT")
     detailTitle:SetWordWrap(false)
-    box, detailContent = DCR.ScrollBox(detailView)
+    local detailScroll
+    box, detailContent, detailScroll = DCR.ScrollBox(detailView)
     box:SetPoint("TOPLEFT", 0, -26)
     box:SetPoint("BOTTOMRIGHT", 0, 34)
+    detailList = DCR.VirtualList(detailScroll, makeItemRow, bindItemRow)
     cartMissingBtn = DCR.FlatButton(detailView, "Cart missing", 96)
     cartMissingBtn:SetPoint("BOTTOMLEFT", 0, 0)
     cartMissingBtn:SetScript("OnClick", function(self)
@@ -566,7 +614,17 @@ function DCR.BlueprintInit()
         button1 = YES,
         button2 = CANCEL,
         OnAccept = function(_, data)
-            applyAdds(data.contentInfo, data.missingOnly, true, data.fromBtn)
+            confirmAdds(data.contentInfo, data.missingOnly, true, data.fromBtn)
+        end,
+        timeout = 0,
+        hideOnEscape = true,
+    }
+    StaticPopupDialogs["DECOR_TOOLS_BLUEPRINT_BIG_ADD"] = {
+        text = "%s",
+        button1 = YES,
+        button2 = CANCEL,
+        OnAccept = function(_, data)
+            applyAdds(data.contentInfo, data.missingOnly, data.stack, data.fromBtn)
         end,
         timeout = 0,
         hideOnEscape = true,

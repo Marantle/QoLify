@@ -80,8 +80,9 @@ function DCR.FlatButton(parent, label, width)
 end
 
 -- Bordered dark box with a scrolling content frame inside, the list body of
--- the cart and the paint catalog. Returns the box (anchor that) and the
--- content (fill that). The content hangs from its top-left corner only,
+-- the cart and the paint catalog. Returns the box (anchor that), the content
+-- (fill that) and the scroll frame, which only a VirtualList needs.
+-- The content hangs from its top-left corner only,
 -- because anchoring its right edge to the scroll frame makes rows vanish
 -- once scrolled, so its width follows the scroll frame by hand instead,
 -- which also covers window resizing.
@@ -104,7 +105,97 @@ function DCR.ScrollBox(parent)
     end)
     content:SetWidth(scroll:GetWidth())
 
-    return box, content
+    return box, content, scroll
+end
+
+-- A long list that only builds the rows its box can show. Reset, then one
+-- Add per row (with a Column call wherever the layout wraps), then Paint,
+-- which puts rows on the placements falling inside the view. Rows come from
+-- create() as they are first needed and are reused from there on, so bind()
+-- has to fill in everything a row shows.
+--
+-- A frame per item stops working somewhere in the hundreds. The client keeps
+-- answering the mouse long after it has given up drawing that many icons and
+-- font strings, so the list goes blank while its tooltips still work.
+function DCR.VirtualList(scroll, create, bind)
+    local slots, runs, rows = {}, {}, {}
+    local count, runCount = 0, 0
+    local list = {}
+
+    -- Paint searches a column top to bottom, so a layout that wraps has to
+    -- say where one ends. Single column lists never call this.
+    function list:Column()
+        runCount = runCount + 1
+        local run = runs[runCount]
+        if not run then
+            run = {}
+            runs[runCount] = run
+        end
+        run.first, run.last = count + 1, count
+    end
+
+    function list:Reset()
+        count, runCount = 0, 0
+        self:Column()
+    end
+
+    function list:Add(data, x, y, w, h)
+        count = count + 1
+        local slot = slots[count]
+        if not slot then
+            slot = {}
+            slots[count] = slot
+        end
+        slot.data, slot.x, slot.y, slot.w, slot.h = data, x, y, w, h
+        runs[runCount].last = count
+    end
+
+    function list:Paint()
+        local top = scroll:GetVerticalScroll()
+        local bottom = top + scroll:GetHeight()
+        local shown = 0
+        for i = 1, runCount do
+            local run = runs[i]
+            -- the column's first row still hanging into the view
+            local lo, hi = run.first, run.last
+            while lo < hi do
+                local mid = math.floor((lo + hi) / 2)
+                if slots[mid].y + slots[mid].h <= top then
+                    lo = mid + 1
+                else
+                    hi = mid
+                end
+            end
+            for j = lo, run.last do
+                local slot = slots[j]
+                if slot.y >= bottom then
+                    break
+                end
+                shown = shown + 1
+                local row = rows[shown]
+                if not row then
+                    row = create()
+                    rows[shown] = row
+                end
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", slot.x, -slot.y)
+                row:SetSize(slot.w, slot.h)
+                bind(row, slot.data)
+                row:Show()
+            end
+        end
+        for i = shown + 1, #rows do
+            rows[i]:Hide()
+        end
+    end
+
+    local function repaint()
+        list:Paint()
+    end
+    scroll:HookScript("OnVerticalScroll", repaint)
+    scroll:HookScript("OnSizeChanged", repaint)
+    list:Reset()
+    return list
 end
 
 -- Shift and Ctrl turn one click into 5 or 10, shared by the catalog add
