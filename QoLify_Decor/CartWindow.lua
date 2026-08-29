@@ -29,6 +29,7 @@ local createRow
 local pending -- catalog entry for the decor currently selected in the editor
 local buyTicker, buyBtn, buyQueue -- the running section buy, whose button started it, and its rows
 local lastKnownCost, lastCurrencyTotals, lastCount = 0, {}, 0 -- what the footer sums, for its tints and tooltip
+local lastAhCost = 0 -- the auction share of that sum, estimates for items no vendor has
 local lastUnpriced -- whether part of the cart is still waiting for a price
 local lastLayoutW -- list width at the last refresh, reflow only on real change
 
@@ -59,16 +60,36 @@ local SECTIONS = {
         match = function(e)
             return e.bp
         end,
+        -- a section fed by a single blueprint wears its name, a mix (or
+        -- rows carted before names were recorded) keeps the plain title
+        Title = function(entries)
+            local name
+            for _, e in ipairs(entries) do
+                if not e.bpName or (name and e.bpName ~= name) then
+                    return nil
+                end
+                name = e.bpName
+            end
+            return name and ('From "' .. name .. '"') or nil
+        end,
     },
 }
 
 local setIcon = DCR.SetIcon
 
--- One item's cost as text: gold, currencies, or both joined with +.
+-- Whether a vendor ever put a number on the item, estimate or confirmed.
+local function priced(rec)
+    return rec ~= nil and (rec.price or rec.costs) ~= nil
+end
+
+-- One item's cost as text: gold, currencies, or both joined with +. An item
+-- no vendor prices falls back to the auction estimate when a price addon
+-- has one.
 local function costText(entry)
     local rec = DCR.PriceFor(entry.itemID)
-    if not rec then
-        return ""
+    if not priced(rec) then
+        local ah = DCR.AuctionPriceFor(entry.itemID)
+        return ah and ("~" .. DCR.Money(ah.price, 16) .. " (AH)") or ""
     end
     local parts
     if rec.price then
@@ -92,22 +113,13 @@ local function costText(entry)
     return (rec.estimated and "~" or "") .. table.concat(parts, " + ")
 end
 
--- Whether a vendor ever put a number on the item, estimate or confirmed.
-local function priced(rec)
-    return rec ~= nil and (rec.price or rec.costs) ~= nil
-end
-
 -- Nothing sells it that we know of, so the auction house is what the row can
 -- offer, and only while it is open.
 local function needsAH(entry)
     return DCR.AuctionHouseOpen() and entry.itemID ~= nil and not priced(DCR.PriceFor(entry.itemID))
 end
 
--- Costs key on their currency, and the barter kind on the item they charge,
--- so two rows paying with the same thing land on one tally.
-local function costKey(c)
-    return c.currencyID or c.link or c.label or "?"
-end
+local costKey = DCR.CostKey
 
 -- How much of a cost's currency the player carries. Barter costs charge an
 -- item instead, so those count the bags. A cost naming neither is unknown,
@@ -120,6 +132,7 @@ local function heldFor(c)
     local itemID = c.link and (C_Item.GetItemInfoInstant(c.link))
     return itemID and C_Item.GetItemCount(itemID) or nil
 end
+DCR.HeldFor = heldFor -- the blueprint tooltips tint their costs the same way
 
 local function tint(ok, text)
     return (ok and OK_HEX or SHORT_HEX) .. text .. "|r"
@@ -264,6 +277,7 @@ local function costLine(need, held, ok)
     local c = ok and OK_RGB or SHORT_RGB
     GameTooltip:AddDoubleLine(need, "you have " .. held, 1, 1, 1, c[1], c[2], c[3])
 end
+DCR.CostLine = costLine
 
 local function buyTick()
     local list = DCR.CartItems()
@@ -654,6 +668,11 @@ local function paintTotals()
     if lastKnownCost > 0 then
         parts[1] = tint(GetMoney() >= lastKnownCost, DCR.Money(lastKnownCost, 16))
     end
+    if lastAhCost > 0 then
+        -- the same purse pays the vendor part first, so the auction share
+        -- tints against what would be left
+        parts[#parts + 1] = tint(GetMoney() >= lastKnownCost + lastAhCost, "~" .. DCR.Money(lastAhCost, 16) .. " (AH)")
+    end
     for _, t in ipairs(lastCurrencyTotals) do
         local held = heldFor(t)
         local text = t.icon and (t.amount .. " |T" .. t.icon .. ":16|t") or (t.amount .. " " .. (t.label or "?"))
@@ -710,9 +729,7 @@ local function refresh()
     local cols = math.max(1, math.floor((contentW + COL_GAP) / (COL_W + COL_GAP)))
     local colW = cols == 1 and contentW or math.floor((contentW - (cols - 1) * COL_GAP) / cols)
     local total = 0
-    local knownCost = 0
-    local currencies, currencyOrder = {}, {}
-    local unpriced = false
+    local tally = DCR.CostTally()
     local y = 0
     rowList:Reset()
     local cart = DCR.CartDB()
@@ -727,7 +744,8 @@ local function refresh()
             h:ClearAllPoints()
             h:SetPoint("TOPLEFT", 0, -y)
             h:SetWidth(contentW)
-            h.title:SetText((closed and "+ " or "- ") .. s.title .. " (" .. #s.entries .. ")")
+            local titleText = s.Title and s.Title(s.entries) or s.title
+            h.title:SetText((closed and "+ " or "- ") .. titleText .. " (" .. #s.entries .. ")")
             h:Show()
             y = y + 24
             -- rows fill a column until it holds its share of the section's
@@ -746,29 +764,7 @@ local function refresh()
             for _, entry in ipairs(s.entries) do
                 -- the footer always sums the whole cart, collapsed or not
                 total = total + entry.qty
-                local rec = DCR.PriceFor(entry.itemID)
-                if rec and rec.price then
-                    knownCost = knownCost + rec.price * entry.qty
-                end
-                if rec and rec.costs then
-                    for _, c in ipairs(rec.costs) do
-                        local key = costKey(c)
-                        local t = currencies[key]
-                        if not t then
-                            t = {
-                                amount = 0,
-                                icon = c.icon,
-                                label = c.label,
-                                currencyID = c.currencyID,
-                                link = c.link,
-                            }
-                            currencies[key] = t
-                            currencyOrder[#currencyOrder + 1] = t
-                        end
-                        t.amount = t.amount + c.amount * entry.qty
-                    end
-                end
-                unpriced = unpriced or not priced(rec)
+                tally:Add(entry.itemID, entry.qty)
                 secBuyable = secBuyable or DCR.MerchantSlotFor(entry.recordID) ~= nil
                 secAH = secAH or needsAH(entry)
                 if not closed then
@@ -796,11 +792,12 @@ local function refresh()
         end
     end
     listContent:SetHeight(math.max(1, y))
-    table.sort(currencyOrder, function(a, b)
+    table.sort(tally.order, function(a, b)
         return (a.label or "") < (b.label or "")
     end)
-    lastKnownCost, lastCurrencyTotals, lastCount = knownCost, currencyOrder, total
-    lastUnpriced = unpriced
+    lastKnownCost, lastCurrencyTotals, lastCount = tally.gold, tally.order, total
+    lastAhCost = tally.ah
+    lastUnpriced = tally.unpriced
     paintTotals()
     rowList:Paint()
 end
@@ -1012,6 +1009,10 @@ local function makeSectionHeader(s)
     h:SetHeight(24)
     h.title = label(h, "", GOLD)
     h.title:SetPoint("LEFT", 2, 0)
+    -- a blueprint name in the title must not run into the header buttons
+    h.title:SetPoint("RIGHT", -100, 0)
+    h.title:SetJustifyH("LEFT")
+    h.title:SetWordWrap(false)
     h:SetScript("OnClick", function()
         local cart = DCR.CartDB()
         if cart then
@@ -1186,7 +1187,17 @@ function createRow()
     costHover:SetScript("OnEnter", function(self)
         local entry = rowEntry(row)
         local rec = entry and DCR.PriceFor(entry.itemID)
-        local costs = rec and rec.costs
+        -- an auction estimate says which addon it came from
+        if not priced(rec) then
+            local ah = entry and DCR.AuctionPriceFor(entry.itemID)
+            if ah then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Auction price from " .. ah.source)
+                GameTooltip:Show()
+            end
+            return
+        end
+        local costs = rec.costs
         if not costs or #costs == 0 then
             return
         end
@@ -1283,6 +1294,9 @@ local function build()
     registerPopups()
     -- stayOpen: the cart has to survive entering the house editor.
     panel = DCR.Window(WIN_NAME, 400, 620, "Shopping Cart", true)
+
+    local news = DCR.NewsButton(panel)
+    news:SetPoint("RIGHT", panel.resetBtn, "LEFT", -6, 0)
 
     -- resizable from the corner, everything inside follows its anchors. The
     -- caps: enough width for five columns (68 is the window chrome around
@@ -1410,14 +1424,21 @@ local function build()
     totalsHover:SetAllPoints(countText)
     totalsHover:EnableMouse(true)
     totalsHover:SetScript("OnEnter", function(self)
-        if lastKnownCost == 0 and #lastCurrencyTotals == 0 then
+        if lastKnownCost == 0 and lastAhCost == 0 and #lastCurrencyTotals == 0 then
             return
         end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine("Planned total", GOLD[1], GOLD[2], GOLD[3])
+        local money = GetMoney()
         if lastKnownCost > 0 then
-            local money = GetMoney()
             costLine(DCR.Money(lastKnownCost), DCR.Money(money), money >= lastKnownCost)
+        end
+        if lastAhCost > 0 then
+            costLine(
+                "~" .. DCR.Money(lastAhCost) .. " at auction",
+                DCR.Money(money),
+                money >= lastKnownCost + lastAhCost
+            )
         end
         for _, t in ipairs(lastCurrencyTotals) do
             local held = heldFor(t)

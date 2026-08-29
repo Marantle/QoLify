@@ -30,7 +30,8 @@ from the catalog, with the planned total colored by what you can actually afford
 counts down as you buy, with buy buttons in the cart for whatever that vendor stocks.
 Pieces without a vendor get crossed off too, however they land in your bags, and at
 the auction house the cart grows search buttons for them, nicest with Auctionator
-installed. The list sorts itself into decor, dye and blueprint sections, and from
+installed. If you run Auctionator or Oribos Exchange, those pieces also show that
+addon's auction price in the list. The list sorts itself into decor, dye and blueprint sections, and from
 patch 12.1 a blueprint carts itself, with buttons on Blizzard's blueprint window
 and a picker in the cart that grab every missing piece in one click.
 The spend watcher is the budget half: pick a per-item gold cap and

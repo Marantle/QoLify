@@ -17,10 +17,11 @@ cart with every dye instead.
 
 Carted items show their price. The catalog gives an estimate, marked with ~,
 and visiting a vendor that sells a piece records its real cost, whether gold,
-a currency, barter items or a mix. Hover a cost icon to see what it is, and
-the footer sums up what the whole plan will run you, each part of the sum
-green while you can cover it and red once you cannot. Hover the sum to put
-what you carry beside what the cart asks for.
+a currency, barter items or a mix. Pieces only the auction house sells get
+their estimate from Auctionator or Oribos Exchange if you run either. Hover a cost icon to see what it is, and the footer sums up what the
+whole plan will run you, each part of the sum green while you can cover it
+and red once you cannot. Hover the sum to put what you carry beside what the
+cart asks for.
 
 The list keeps itself sorted into sections, decor, dyes and blueprint
 pieces, each collapsible behind its header. Drag the window wider and the
@@ -54,7 +55,10 @@ where single pieces add with their + (the missing count on a plain click,
 the full count with Ctrl) and the same two buttons take the whole list.
 Blueprint pieces sit in their own cart section apart from the hand-picked
 ones, clicking a second time tops counts up instead of doubling them, and
-stacking a genuine second set on top is one confirm away.
+stacking a genuine second set on top is one confirm away. Blueprints come
+priced along the way: the picker lists what each one runs, its contents
+page sums the full set and the missing part, and the same totals sit over
+the cart buttons on Blizzard's blueprint window.
 
 ## The spend watcher
 

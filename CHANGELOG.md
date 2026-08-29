@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+- Decor Tools module 2.4.0: carted pieces that only the auction house sells
+  now show a price pulled from Auctionator or Oribos Exchange when one of
+  them is installed, and blueprints show what they cost wherever the cart
+  deals with them. The cart's header also grew a blinking Patch notes
+  button. Its own changelog has the details.
+
 ## 1.3.2
 - Decor Tools module 2.3.2: a shopping cart filled from a house-sized
   blueprint looked empty even though the total counted everything in it, and

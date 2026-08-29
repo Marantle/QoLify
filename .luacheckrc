@@ -108,6 +108,7 @@ read_globals = {
     "GetNumGroupMembers",
     -- Decor module
     "GetCoinTextureString",
+    "BreakUpLargeNumbers",
     "C_Item",
     "Item",
     "C_MerchantFrame",
@@ -148,5 +149,6 @@ read_globals = {
     "AuctionHouseUtil",
     "UIErrorsFrame",
     "Auctionator",
+    "OEMarketInfo",
     "ShowUIPanel",
 }

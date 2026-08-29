@@ -284,6 +284,118 @@ function DCR.PriceFor(itemID)
     return cart and itemID and cart.prices[itemID] or nil
 end
 
+-- Items no vendor sells can still get a number: whichever auction price
+-- addon is installed gets asked and the first source with an answer wins.
+-- Prices are copper per unit. Oribos Exchange fills a caller-owned table,
+-- handed in for reuse, with the realm price under market and the
+-- region-wide one as the fallback for realms with no data.
+local oeInfo = {}
+local AH_SOURCES = {
+    {
+        label = "Auctionator",
+        get = function(itemID)
+            local api = Auctionator and Auctionator.API and Auctionator.API.v1
+            return api and api.GetAuctionPriceByItemID and api.GetAuctionPriceByItemID("QoLify Decor Tools", itemID)
+        end,
+    },
+    {
+        label = "Oribos Exchange",
+        get = function(itemID)
+            if not OEMarketInfo then
+                return nil
+            end
+            local t = OEMarketInfo(itemID, oeInfo)
+            return t and (t.market or t.region)
+        end,
+    },
+}
+
+-- Answers are cached, misses too, since a blueprint cart asks thousands of
+-- times per refresh. The cache drops on both AH door swings: scans land
+-- while it is open, so prices read after a visit should be the fresh ones.
+local ahPrices = {} -- [itemID] = { price, source } or false when nobody knows
+
+function DCR.AuctionPriceFor(itemID)
+    if not itemID then
+        return nil
+    end
+    local hit = ahPrices[itemID]
+    if hit == nil then
+        for _, src in ipairs(AH_SOURCES) do
+            local copper = src.get(itemID)
+            if copper and copper > 0 then
+                hit = { price = copper, source = src.label }
+                break
+            end
+        end
+        hit = hit or false
+        ahPrices[itemID] = hit
+    end
+    return hit or nil
+end
+
+-- The vendor side of an item's planning price: the stored record, or one
+-- parsed fresh from catalog sourceText for an item nothing has priced yet.
+-- Returns nil when neither has a number, which cues the auction estimate.
+function DCR.ItemCost(itemID, sourceText)
+    local cart = DCR.CartDB()
+    if not (cart and itemID) then
+        return nil
+    end
+    local rec = cart.prices[itemID]
+    if not rec and sourceText then
+        rec = parseSourceCost(sourceText)
+        cart.prices[itemID] = rec
+    end
+    if rec and (rec.price or rec.costs) then
+        return rec
+    end
+    return nil
+end
+
+-- Costs key on their currency, and the barter kind on the item they charge,
+-- so two rows paying with the same thing land on one tally line.
+function DCR.CostKey(c)
+    return c.currencyID or c.link or c.label or "?"
+end
+
+-- A running sum of planned costs, shared by the cart footer and the
+-- blueprint totals: vendor gold, currencies merged by CostKey, the auction
+-- estimate where no vendor is known, and a flag once a piece has no number
+-- from anywhere.
+function DCR.CostTally()
+    local byKey = {}
+    local tally = { gold = 0, ah = 0, order = {}, unpriced = false }
+    function tally:Add(itemID, qty, sourceText)
+        local rec = DCR.ItemCost(itemID, sourceText)
+        if not rec then
+            local est = DCR.AuctionPriceFor(itemID)
+            if est then
+                self.ah = self.ah + est.price * qty
+            else
+                self.unpriced = true
+            end
+            return
+        end
+        if rec.price then
+            self.gold = self.gold + rec.price * qty
+        end
+        if rec.costs then
+            for _, c in ipairs(rec.costs) do
+                local key = DCR.CostKey(c)
+                local t = byKey[key]
+                if not t then
+                    t = { amount = 0, icon = c.icon, label = c.label, currencyID = c.currencyID, link = c.link }
+                    byKey[key] = t
+                    self.order[#self.order + 1] = t
+                end
+                t.amount = t.amount + c.amount * qty
+            end
+        end
+    end
+    return tally
+end
+
 -- Catalog data is loaded lazily and GetCatalogEntryInfo returns nil while it
 -- is cold, which leaves older cart entries without a price estimate until
 -- some catalog UI happens to be opened. A one-shot background search (the
@@ -437,6 +549,7 @@ function DCR.AddCartEntry(info, count)
     -- item can sit in the blueprint section and a hand-picked one at once
     entry.bp = info.bp and true or entry.bp
     entry.baseID = info.baseID or entry.baseID
+    entry.bpName = info.bpName or entry.bpName
     -- The add already holds the full catalog info, so the estimate from its
     -- sourceText is free. changed() would only redo the catalog query.
     local cart = DCR.CartDB()
@@ -632,6 +745,7 @@ bagWatcher:SetScript("OnEvent", function(_, event, arg)
             bankOpen = event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW"
         elseif arg == Enum.PlayerInteractionType.Auctioneer then
             ahOpen = event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW"
+            wipe(ahPrices)
             if ahOpen then
                 ahAutoOpened = anyUnpriced() and DCR.AutoShowCart and DCR.AutoShowCart() or false
             elseif ahAutoOpened then

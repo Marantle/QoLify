@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.4.0
+- Carted pieces that only the auction house sells now show a price too, read
+  from Auctionator or Oribos Exchange when you have one of them. It wears
+  the same ~ the other estimates do, the footer sums it up as its own auction
+  share next to the vendor part, and hovering a row's price tells you which
+  addon the number came from.
+- Blueprints now come priced. The picker's list shows what each one runs
+  next to its name, filled in quietly as the picker sits open. Opening one
+  sums the full set and the missing part under its pieces, and Blizzard's
+  blueprint window carries the same totals above the cart buttons, with the
+  full breakdown and your purse colors in their tooltips.
+- The cart's blueprint section says where it came from: pieces all carted
+  from one blueprint put its name in the section header.
+- The cart's header grew a Patch notes button. It blinks after an update
+  with something new until you read the notes, then stays quiet.
+
 ## 2.3.2
 - A blueprint the size of a whole house left the shopping cart looking empty.
   The rows were there and the total counted them. Hovering one even brought
