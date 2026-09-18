@@ -94,6 +94,47 @@ local function tallyText(tally)
     return table.concat(parts, " + ") .. (tally.unpriced and " so far" or "")
 end
 
+-- Tooltip lines for a tally, tinted like the cart tooltip's purse lines. The
+-- auction share is held against what the gold leaves over.
+local function addTallyLines(tally)
+    local money = GetMoney()
+    if tally.gold > 0 then
+        DCR.CostLine(DCR.Money(tally.gold), DCR.Money(money), money >= tally.gold)
+    end
+    if tally.ah > 0 then
+        DCR.CostLine("~" .. DCR.Money(tally.ah) .. " at auction", DCR.Money(money), money >= tally.gold + tally.ah)
+    end
+    for _, c in ipairs(tally.order) do
+        local held = DCR.HeldFor(c)
+        DCR.CostLine(
+            c.amount .. " " .. (c.label or "Unknown currency"),
+            held and tostring(held),
+            held and held >= c.amount
+        )
+    end
+    if tally.unpriced then
+        GameTooltip:AddLine("Some pieces have no price yet.", 0.8, 0.8, 0.8)
+    end
+end
+
+-- a widget carrying a .tally gets its costs listed under the text
+local function tip(widget, title, body)
+    widget:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(title)
+        if body then
+            GameTooltip:AddLine(body, 0.8, 0.8, 0.8, true)
+        end
+        if self.tally then
+            addTallyLines(self.tally)
+        end
+        GameTooltip:Show()
+    end)
+    widget:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
+
 -- The squeeze for tight spots: one gold figure with vendor and auction
 -- lumped together, always ~ since totals stay estimates until every vendor
 -- was visited, and a trailing + when currencies or unpriced pieces sit
@@ -265,38 +306,7 @@ local function makeCartButton(listFrame, label, missingOnly, tipTitle, tipBody)
     btn.cost = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     btn.cost:SetPoint("BOTTOM", btn, "TOP", 0, 4)
     btn.cost:SetTextColor(DIM[1], DIM[2], DIM[3])
-    btn:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(tipTitle)
-        GameTooltip:AddLine(tipBody, 0.8, 0.8, 0.8, true)
-        -- the costs with the cart tooltip's purse tints: gold, the auction
-        -- share against what the gold leaves over, each currency on its own
-        if self.tally then
-            local tal = self.tally
-            local money = GetMoney()
-            if tal.gold > 0 then
-                DCR.CostLine(DCR.Money(tal.gold), DCR.Money(money), money >= tal.gold)
-            end
-            if tal.ah > 0 then
-                DCR.CostLine("~" .. DCR.Money(tal.ah) .. " at auction", DCR.Money(money), money >= tal.gold + tal.ah)
-            end
-            for _, c in ipairs(tal.order) do
-                local held = DCR.HeldFor(c)
-                DCR.CostLine(
-                    c.amount .. " " .. (c.label or "Unknown currency"),
-                    held and tostring(held),
-                    held and held >= c.amount
-                )
-            end
-            if tal.unpriced then
-                GameTooltip:AddLine("Some pieces have no price yet.", 0.8, 0.8, 0.8)
-            end
-        end
-        GameTooltip:Show()
-    end)
-    btn:HookScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
+    tip(btn, tipTitle, tipBody)
     btn:SetScript("OnClick", function(self)
         cartPieces(listFrame.blueprintContentInfo, missingOnly, self)
     end)
@@ -338,16 +348,18 @@ local function attach()
         end
     end
 
-    -- Without a target house the window is a plain read-only listing and
-    -- numMissing means nothing, so the missing button only shows when
-    -- something is actually missing. Blizzard re-runs ShowBlueprintContents
-    -- on storage and layout changes, so both keep themselves in sync as
-    -- purchases land.
+    -- Without a target house the window turns into a read-only listing and
+    -- hides its own missing marks, but the payload still carries numMissing,
+    -- counted against storage alone (see requestContents), so the missing
+    -- button works out there too. With a target the counts are Blizzard's,
+    -- placed pieces included, matching what the window shows. Blizzard
+    -- re-runs ShowBlueprintContents on storage and layout changes, so both
+    -- keep themselves in sync as purchases land.
     hooksecurefunc(listFrame, "ShowBlueprintContents", function()
         local contentInfo = listFrame.blueprintContentInfo
         local ok = contentInfo and DCR.CartDB()
         allBtn:SetShown(ok and anyToCart(contentInfo, false) or false)
-        missingBtn:SetShown(ok and listFrame:HasTargetHouse() and anyToCart(contentInfo, true) or false)
+        missingBtn:SetShown(ok and anyToCart(contentInfo, true) or false)
         priceUp(allBtn, contentInfo, false)
         priceUp(missingBtn, contentInfo, true)
     end)
@@ -364,8 +376,12 @@ local detailFull, detailMissing -- the contents page's two total lines
 local cartAllBtn, cartMissingBtn
 local headerPool, bpRowPool = {}, {}
 local detailList -- the contents page, whose rows are built as they scroll into view
-local shownContent -- contents currently on the detail page
+local priceBtn -- under the blueprint list, starts and stops the costs run
+local shownContent, shownTitle -- contents currently on the detail page
 local pendingCode, pendingTitle -- contents request in flight, and for whom
+local pendingTarget -- the house its reply has to name, see requestContents
+local houses, houseIdx -- the player's own houses, fetched once placed decor gets counted
+local placedCheck, houseBtn
 local shownCollection -- the listing as last received, for cost repaints
 local totalsCache = {} -- [shareCode] = full-set tally, kept for the session
 local fetchQueue, fetching = {}, nil -- the background contents requests behind the listing costs
@@ -402,6 +418,68 @@ local function setStatus(text)
     statusOverlay:Show()
 end
 
+-- opaque house GUIDs change every session, neighborhood plus plot does not
+local function houseKey(house)
+    return house.neighborhoodGUID .. ":" .. house.plotID
+end
+
+-- The house list only matters with placed decor counted, so that is the
+-- only time it gets asked for, once a session.
+local function wantHouses()
+    if DCR.CartDB().bpCountPlaced and not houses then
+        C_Housing.GetPlayerOwnedHouses()
+    end
+end
+
+-- With the tick off a house is ruled out and the server counts against
+-- storage, the same from anywhere. With it on the count takes a house. The
+-- plain request picks the one you stand in, and away from home one of your
+-- own gets named, which the server answers from outside too (probed on
+-- 12.1.0.69814). Hands back the GUID the reply has to name when one was
+-- named, since a second request does not cancel the first and a stale reply
+-- can land ahead of the one that counts.
+local function requestContents(code)
+    local guid
+    if DCR.CartDB().bpCountPlaced then
+        if C_Housing.IsInsideHouse() then
+            C_HousingBlueprint.RequestBlueprintContents(code)
+            return
+        end
+        local house = houses and houses[houseIdx]
+        guid = house and house.houseGUID
+    end
+    C_HousingBlueprint.RequestBlueprintContentsForContext(code, guid)
+    return guid
+end
+
+local function requestDetail(code, title)
+    -- this outranks the background costs run, whose in-flight request the
+    -- shared endpoint may cancel, so that goes back in line
+    if fetching then
+        table.insert(fetchQueue, 1, fetching)
+        fetching = nil
+    end
+    pendingCode, pendingTitle = code, title
+    setStatus("Loading " .. title .. "...")
+    pendingTarget = requestContents(code)
+end
+
+-- A room import adds a room and leaves placed decor where it stands, so the
+-- server counts a room blueprint against storage with or without a house,
+-- the same numMissing all three ways in the probe. The tick has nothing to
+-- change there, so the whole row stays away.
+local function refreshOptions()
+    local room = C_HousingBlueprint.GetBlueprintTypeForCode(shownContent.shareCode) == Enum.HousingBlueprintType.Room
+    local on = not room and DCR.CartDB().bpCountPlaced or false
+    placedCheck:SetShown(not room)
+    placedCheck.tick:SetShown(on)
+    local pick = on and houses and #houses > 1 and not C_Housing.IsInsideHouse() or false
+    houseBtn:SetShown(pick)
+    if pick then
+        houseBtn.text:SetText(houses[houseIdx].houseName)
+    end
+end
+
 local function makeBpRow()
     local row = CreateFrame("Button", nil, collectionContent, "BackdropTemplate")
     row:SetHeight(22)
@@ -421,15 +499,7 @@ local function makeBpRow()
         self:SetBackdropColor(0, 0, 0, 0)
     end)
     row:SetScript("OnClick", function(self)
-        -- a click outranks the background costs run, whose in-flight
-        -- request the shared endpoint may cancel, so that goes back in line
-        if fetching then
-            table.insert(fetchQueue, 1, fetching)
-            fetching = nil
-        end
-        pendingCode, pendingTitle = self.code, self.bpName
-        setStatus("Loading " .. self.bpName .. "...")
-        C_HousingBlueprint.RequestBlueprintContents(self.code)
+        requestDetail(self.code, self.bpName)
     end)
     return row
 end
@@ -443,6 +513,7 @@ local function renderCollection(collection)
     poolReset(headerPool)
     poolReset(bpRowPool)
     local y = 0
+    local unpriced = 0
     if collection then
         for _, group in ipairs(collection.groups) do
             if #group.entries > 0 then
@@ -457,6 +528,9 @@ local function renderCollection(collection)
                     row.text:SetText(bp.isAutoSave and (bp.name .. " |cff8888aa(autosave)|r") or bp.name)
                     local t = totalsCache[bp.shareCode]
                     row.cost:SetText(t and shortCost(t) or "")
+                    if not t then
+                        unpriced = unpriced + 1
+                    end
                     row:ClearAllPoints()
                     row:SetPoint("TOPLEFT", 0, -y)
                     row:SetWidth(LIST_W)
@@ -472,12 +546,17 @@ local function renderCollection(collection)
         setStatus("No blueprints saved yet.")
     end
     collectionContent:SetHeight(math.max(1, y))
+    priceBtn:SetShown(unpriced > 0)
+    local running = fetching or #fetchQueue > 0
+    priceBtn.text:SetText(running and ("Pricing, " .. unpriced .. " left (stop)") or "Price all blueprints")
 end
 
 -- The listing's costs need each blueprint's contents once, which only the
--- server can hand over. A quiet run fetches them one at a time with a
--- breather in betwen, only while the picker is up, skipping whatever the
--- session already priced.
+-- server can hand over. The run fetches them one at a time with a breather
+-- in betwen, only while the picker is up, skipping whatever the session
+-- already priced. The button under the list starts it and nothing else does,
+-- since the requests share the endpoint a click uses and an opened blueprint
+-- would sit waiting behind them.
 local function fetchNext()
     if fetching or pendingCode or not picker:IsShown() then
         return
@@ -585,12 +664,11 @@ local function bindItemRow(row, piece)
 end
 
 local function renderDetail(contentInfo, title, redrawn)
-    shownContent = contentInfo
+    shownContent, shownTitle = contentInfo, title
     renderGen = renderGen + 1
     local gen = renderGen
     detailTitle:SetText(title or "Blueprint")
     detailList:Reset()
-    local hasHouse = contentInfo.targetHouseGUID ~= nil
     local cold = false
     local n = 0
     -- the totals ride the same walk the rows come from, missing counted
@@ -600,11 +678,9 @@ local function renderDetail(contentInfo, title, redrawn)
         local info = infoFor(ctype, entry)
         cold = cold or info.cold
         fullTally:Add(info.itemID, wanted, info.sourceText)
-        if hasHouse and entry.numMissing > 0 then
-            missTally:Add(info.itemID, entry.numMissing, info.sourceText)
-        end
         local count = "x" .. wanted
-        if hasHouse and entry.numMissing > 0 then
+        if entry.numMissing > 0 then
+            missTally:Add(info.itemID, entry.numMissing, info.sourceText)
             count = count .. " |cffff6060" .. entry.numMissing .. " missing|r"
         end
         local piece = {
@@ -613,23 +689,25 @@ local function renderDetail(contentInfo, title, redrawn)
             info = info,
             count = count,
             -- plain click adds what is missing, ctrl the full count. With
-            -- nothing missing (or no house to compare) both add the full count.
+            -- nothing missing both add the full count.
             wantAll = wanted,
-            wantMissing = (hasHouse and entry.numMissing > 0) and entry.numMissing or wanted,
+            wantMissing = entry.numMissing > 0 and entry.numMissing or wanted,
         }
         detailList:Add(piece, 0, n * ITEM_ROW_H, LIST_W, ITEM_ROW_H)
         n = n + 1
     end)
     detailContent:SetHeight(math.max(1, n * ITEM_ROW_H))
     detailList:Paint()
-    detailFull:SetText("Full set: " .. (tallyText(fullTally) or "no prices known yet"))
-    local showMiss = hasHouse and anyToCart(contentInfo, true)
+    detailFull.text:SetText("Full set: " .. (tallyText(fullTally) or "no prices known yet"))
+    detailFull.tally, detailMissing.tally = fullTally, missTally
+    local showMiss = anyToCart(contentInfo, true)
     if showMiss then
-        detailMissing:SetText("Missing: " .. (tallyText(missTally) or "no prices known yet"))
+        detailMissing.text:SetText("Missing: " .. (tallyText(missTally) or "no prices known yet"))
     end
     detailMissing:SetShown(showMiss)
     cartAllBtn:SetShown(anyToCart(contentInfo, false))
     cartMissingBtn:SetShown(showMiss)
+    refreshOptions()
     showView(detailView)
     -- A cold catalog answers every decor query with nil, which is the whole
     -- page blank when the picker is opened straight off a loading screen. One
@@ -642,6 +720,65 @@ local function renderDetail(contentInfo, title, redrawn)
             end
         end)
     end
+end
+
+-- One of the two total lines under the contents list. The text is a single
+-- line that cuts off once currencies pile up, so hovering spells the tally
+-- out the way the cart's footer does.
+local function makeTotalLine(y, title)
+    local line = CreateFrame("Frame", nil, detailView)
+    line:SetHeight(14)
+    line:SetPoint("BOTTOMLEFT", 2, y)
+    line:SetPoint("BOTTOMRIGHT", -2, y)
+    line:EnableMouse(true)
+    line.text = DCR.Label(line, "", DIM, "GameFontNormalSmall")
+    line.text:SetAllPoints()
+    line.text:SetJustifyH("LEFT")
+    line.text:SetWordWrap(false)
+    tip(line, title)
+    return line
+end
+
+-- The row between the totals and the cart buttons. It holds the placed decor
+-- tick and, for players with more than one house, the button picking which
+-- one it reads.
+local function buildOptions()
+    placedCheck = DCR.Checkbox(detailView)
+    placedCheck:SetPoint("BOTTOMLEFT", 0, 30)
+    placedCheck:SetScript("OnClick", function()
+        local cart = DCR.CartDB()
+        cart.bpCountPlaced = not cart.bpCountPlaced
+        refreshOptions()
+        wantHouses()
+        requestDetail(shownContent.shareCode, shownTitle)
+    end)
+    tip(
+        placedCheck,
+        "Count placed decor",
+        "Counts pieces already placed in your house as owned, so only what the house still lacks shows as missing.\n"
+            .. "Leave it off to count your storage alone. It starts off."
+    )
+    -- the tick's own child, so it goes wherever the tick goes
+    local text = DCR.Label(placedCheck, "Count placed decor", DIM, "GameFontNormalSmall")
+    text:SetPoint("LEFT", placedCheck, "RIGHT", 6, 0)
+
+    houseBtn = DCR.FlatButton(detailView, "", 140)
+    houseBtn:SetHeight(18)
+    houseBtn:SetPoint("BOTTOMRIGHT", 0, 30)
+    houseBtn.text:SetFontObject("GameFontHighlightSmall")
+    houseBtn.text:SetWidth(132)
+    houseBtn.text:SetWordWrap(false)
+    houseBtn:SetScript("OnClick", function()
+        houseIdx = houseIdx % #houses + 1
+        DCR.CartDB().bpHouse = houseKey(houses[houseIdx])
+        refreshOptions()
+        requestDetail(shownContent.shareCode, shownTitle)
+    end)
+    tip(
+        houseBtn,
+        "House for placed decor",
+        "Away from home, placed decor counts from this house. Click to switch to another of your houses."
+    )
 end
 
 local function build(cart)
@@ -661,7 +798,27 @@ local function build(cart)
     collectionView:SetPoint("BOTTOMRIGHT", -18, 16)
     local box
     box, collectionContent = DCR.ScrollBox(collectionView)
-    box:SetAllPoints(collectionView)
+    box:SetPoint("TOPLEFT")
+    box:SetPoint("BOTTOMRIGHT", 0, 30)
+    priceBtn = DCR.FlatButton(collectionView, "", 100)
+    priceBtn:SetPoint("BOTTOMLEFT")
+    priceBtn:SetPoint("BOTTOMRIGHT")
+    priceBtn:SetScript("OnClick", function()
+        if fetching or #fetchQueue > 0 then
+            -- the one in flight still lands and gets its price
+            wipe(fetchQueue)
+        else
+            queueTotals()
+        end
+        renderCollection(shownCollection)
+    end)
+    tip(
+        priceBtn,
+        "Price all blueprints",
+        "Shows what each blueprint's full set costs next to its name.\n"
+            .. "Takes a while with many blueprints, click again to stop.\n"
+            .. "Opening a blueprint prices that one either way."
+    )
 
     -- Sits over the whole list while a request runs (or it failed), both as
     -- feedback and to keep the rows from taking more clicks. A click on it
@@ -701,18 +858,11 @@ local function build(cart)
     local detailScroll
     box, detailContent, detailScroll = DCR.ScrollBox(detailView)
     box:SetPoint("TOPLEFT", 0, -26)
-    box:SetPoint("BOTTOMRIGHT", 0, 58)
+    box:SetPoint("BOTTOMRIGHT", 0, 84)
     detailList = DCR.VirtualList(detailScroll, makeItemRow, bindItemRow)
-    detailFull = DCR.Label(detailView, "", DIM, "GameFontNormalSmall")
-    detailFull:SetPoint("BOTTOMLEFT", 2, 42)
-    detailFull:SetPoint("BOTTOMRIGHT", -2, 42)
-    detailFull:SetJustifyH("LEFT")
-    detailFull:SetWordWrap(false)
-    detailMissing = DCR.Label(detailView, "", DIM, "GameFontNormalSmall")
-    detailMissing:SetPoint("BOTTOMLEFT", 2, 28)
-    detailMissing:SetPoint("BOTTOMRIGHT", -2, 28)
-    detailMissing:SetJustifyH("LEFT")
-    detailMissing:SetWordWrap(false)
+    detailFull = makeTotalLine(68, "Full set")
+    detailMissing = makeTotalLine(54, "Missing pieces")
+    buildOptions()
     cartMissingBtn = DCR.FlatButton(detailView, "Cart missing", 96)
     cartMissingBtn:SetPoint("BOTTOMLEFT", 0, 0)
     cartMissingBtn:SetScript("OnClick", function(self)
@@ -733,12 +883,14 @@ local function build(cart)
         self:RegisterEvent("HOUSING_BLUEPRINT_COLLECTION_FAILURE")
         self:RegisterEvent("HOUSING_BLUEPRINT_CONTENTS_RECEIVED")
         self:RegisterEvent("HOUSING_BLUEPRINT_CONTENTS_FAILURE")
+        self:RegisterEvent("PLAYER_HOUSE_LIST_UPDATED")
         shownContent = nil
         shownCollection = nil
         showView(collectionView)
         renderCollection(nil)
         setStatus("Loading blueprints...")
         C_HousingBlueprint.RequestBlueprintCollection()
+        wantHouses()
     end)
     picker:SetScript("OnHide", function(self)
         self:UnregisterAllEvents()
@@ -753,12 +905,12 @@ local function build(cart)
             statusOverlay:Hide()
             shownCollection = arg1
             renderCollection(arg1)
-            queueTotals()
         elseif event == "HOUSING_BLUEPRINT_COLLECTION_FAILURE" then
             setStatus("Could not load blueprints.")
         elseif event == "HOUSING_BLUEPRINT_CONTENTS_RECEIVED" then
             local code = arg1 and arg1.shareCode
-            if pendingCode and code == pendingCode then
+            local stale = code and pendingTarget and arg1.targetHouseGUID ~= pendingTarget
+            if pendingCode and code == pendingCode and not stale then
                 pendingCode = nil
                 statusOverlay:Hide()
                 renderDetail(arg1, pendingTitle)
@@ -772,12 +924,31 @@ local function build(cart)
         elseif event == "HOUSING_BLUEPRINT_CONTENTS_FAILURE" then
             if pendingCode and arg1 == pendingCode then
                 pendingCode = nil
+                -- the status sits over the listing, and a toggle on the
+                -- contents page can be what failed
+                showView(collectionView)
                 setStatus("Could not load that blueprint.")
                 C_Timer.After(0.3, fetchNext)
             elseif arg1 and arg1 == fetching then
                 -- dropped for this open, no retry loop on a flaky one
                 fetching = nil
+                renderCollection(shownCollection) -- the button's count
                 C_Timer.After(0.3, fetchNext)
+            end
+        elseif event == "PLAYER_HOUSE_LIST_UPDATED" then
+            houses, houseIdx = arg1, 1
+            local saved = DCR.CartDB().bpHouse
+            for i, house in ipairs(houses) do
+                if houseKey(house) == saved then
+                    houseIdx = i
+                end
+            end
+            -- contents asked for before the list got here went out bare
+            local bare = pendingCode or (shownContent and not shownContent.targetHouseGUID and shownContent.shareCode)
+            if bare and houses[1] and DCR.CartDB().bpCountPlaced and not C_Housing.IsInsideHouse() then
+                requestDetail(bare, pendingCode and pendingTitle or shownTitle)
+            elseif shownContent then
+                refreshOptions()
             end
         end
     end)

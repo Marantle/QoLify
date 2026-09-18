@@ -30,6 +30,13 @@ globals = {
     "DecorSpendwatch_OnAddonCompartmentClick",
     -- gets our cart buttons written onto it (Blueprint.lua)
     "HousingBlueprintContentListFrame",
+    -- QoLify_CompassBar (same standalone pattern)
+    "CompassBarDB",
+    "SLASH_QLFCBAR1",
+    "SLASH_QLFCBAR2",
+    "SLASH_CBAR1",
+    "SLASH_CBAR2",
+    "CompassBar_OnCompartment",
     -- The Party Keys QoL feature registers its own popup dialog
     "StaticPopupDialogs",
 }
@@ -125,6 +132,7 @@ read_globals = {
     "MERCHANDISE_ITEMS_PER_PAGE",
     "TooltipDataProcessor",
     "UISpecialFrames",
+    "C_Housing",
     "C_HousingCatalog",
     "C_HousingDecor",
     "C_CurrencyInfo",
@@ -151,4 +159,25 @@ read_globals = {
     "Auctionator",
     "OEMarketInfo",
     "ShowUIPanel",
+    -- CompassBar module
+    "C_Map",
+    "C_QuestLog",
+    "C_SuperTrack",
+    "C_AreaPoiInfo",
+    "C_VignetteInfo",
+    "C_TaskQuest",
+    "C_QuestLine",
+    "C_EncounterJournal",
+    "C_TaxiMap",
+    "C_DeathInfo",
+    "CreateVector2D",
+    "UnitPosition",
+    "UnitFactionGroup",
+    "UnitCanAttack",
+    "GetPlayerFacing",
+    "MinimapCompassTexture",
+    "QuestUtil",
+    "ColorPickerFrame",
+    "GameFontNormalLarge",
+    "GameFontHighlightSmall",
 }

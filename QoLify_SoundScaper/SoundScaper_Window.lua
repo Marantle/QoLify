@@ -1,10 +1,10 @@
 local _, SS = ...
 
-local WIN_W = 530
+local WIN_W = 560
 local WIN_H = 410
 local HEADER_H = 46 -- title row plus the divider under it
 local PAD = 18
-local TAB_W = 80
+local TAB_W = 72 -- seven tabs across and Raid Boss is the widest label
 local TAB_H = 24
 local TAB_GAP = 4
 local ROW_H = 30
@@ -391,7 +391,7 @@ function W:Refresh()
         headerFS:SetText(ctx.label)
         descFS:SetText(ctx.desc)
 
-        -- Only the two override contexts get a checkbox. The base three always apply.
+        -- Only the override contexts get a checkbox. The base three always apply.
         if ctx.parent then
             local parent = SS.CONTEXT_BY_KEY[ctx.parent]
             overrideCB:Show()
@@ -619,7 +619,7 @@ function W:Build()
     descFS:SetWidth(WIN_W - PAD * 2)
     descFS:SetJustifyH("LEFT")
 
-    -- Override row: checkbox for Mythic+ / Raid Boss, dim note for the rest.
+    -- Override row: checkbox for House / Mythic+ / Raid Boss, dim note for the rest.
     overrideCB = NewCheck(frame, function(self)
         local p = Profile()
         if p then

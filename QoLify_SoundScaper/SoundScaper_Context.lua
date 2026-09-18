@@ -2,9 +2,16 @@ local _, SS = ...
 
 -- Contexts, most specific last. `parent` is the context whose settings are used
 -- when this one has no override enabled, so a player who only cares about
--- Outdoors/Dungeon/Raid never has to touch the Mythic+ or Raid Boss sections.
+-- Outdoors/Dungeon/Raid never has to touch the House, Mythic+ or Raid Boss
+-- sections.
 SS.CONTEXTS = {
     { key = "world", label = "Outdoors", desc = "Open world, cities, anything outside an instance." },
+    {
+        key = "house",
+        label = "House",
+        desc = "Inside a player house, yours or not. Falls back to Outdoors unless overridden.",
+        parent = "world",
+    },
     { key = "dungeon", label = "Dungeon", desc = "Any 5-player dungeon (normal, heroic, mythic)." },
     {
         key = "mythicplus",
@@ -59,6 +66,13 @@ end
 -- Map/instance APIs return secret values while map restrictions are active, so
 -- every read is guarded and we keep the last known zone rather than guessing.
 local function DetectBase()
+    -- Asked first so it does not matter what IsInInstance makes of an interior.
+    -- False out on the lawn so the plot stays Outdoors. Not a secret return, so
+    -- this one read goes wihout the guard.
+    if C_Housing.IsInsideHouse() then
+        return "house"
+    end
+
     local ok, inInstance, instanceType = pcall(IsInInstance)
     if not ok or IsSecret(inInstance) or IsSecret(instanceType) then
         return base

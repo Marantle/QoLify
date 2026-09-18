@@ -13,13 +13,14 @@ jobs:
         run: make lint
       - name: Check formatting
         run: make check
-      # Building all three zips proves the .toc file lists still resolve and
+      # Building every zip proves the .toc file lists still resolve and
       # packaging did not break, without uploading anywhere.
-      - name: Package all three artifacts
+      - name: Package every artifact
         run: |
           make package
           make package-soundscaper
           make package-decorspendwatch
+          make package-compassbar
       - name: Upload the zips for inspection
         uses: actions/upload-artifact@v4
         with:

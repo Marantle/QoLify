@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0
+- New module: CompassBar 0.1.0, a compass bar across the screen. The
+  direction letters slide past a marker as you turn, and out in the world
+  quests, rares, your group and more ride along as icons, each kind with
+  its own switch and range. `/cbar` opens its settings. Its own changelog
+  has the details.
+- SoundScaper module 1.4.0: a House section for when you're indoors in a
+  player house. It follows Outdoors until you switch it on from its tab.
+- Decor Tools module 2.5.0: a blueprint's Cart missing button and missing
+  counts work anywhere now, counted against your storage, where they used to
+  need you standing in your house. Its own changelog has the details.
+
 ## 1.4.0
 - Decor Tools module 2.4.0: carted pieces that only the auction house sells
   now show a price pulled from Auctionator or Oribos Exchange when one of

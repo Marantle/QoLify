@@ -8,6 +8,13 @@ local _, DCR = ...
 
 local NEWS = {
     {
+        v = "2.5.0",
+        text = "Cart missing works anywhere now. It counts against your storage,"
+            .. " so you can fill the cart right at the vendor. Tick Count placed"
+            .. " decor on a blueprint's page to count what already stands in your"
+            .. " house as owned.",
+    },
+    {
         v = "2.4.0",
         text = "Pieces only the auction house sells now show a price estimate,"
             .. " marked ~ like the catalog ones. Auctionator answers from your own"

@@ -49,16 +49,19 @@ twice.
 
 From patch 12.1 blueprints feed the cart too. Blizzard's blueprint window
 grows a Cart missing button for everything the blueprint needs that you do
-not own, and a Cart all for the full set. The cart's own "add from a
-blueprint" link opens a picker of your saved blueprints beside the window,
+not own, and a Cart all for the full set. The cart counts missing against
+your storage, so it works at a vendor as well as at home, and a tick in the
+picker counts the decor already placed in your house as owned too. The
+cart's own "add from a blueprint" link opens a picker of your saved
+blueprints beside the window,
 where single pieces add with their + (the missing count on a plain click,
 the full count with Ctrl) and the same two buttons take the whole list.
 Blueprint pieces sit in their own cart section apart from the hand-picked
 ones, clicking a second time tops counts up instead of doubling them, and
-stacking a genuine second set on top is one confirm away. Blueprints come
-priced along the way: the picker lists what each one runs, its contents
-page sums the full set and the missing part, and the same totals sit over
-the cart buttons on Blizzard's blueprint window.
+stacking a second full set on top is one confirm away. Blueprints come
+priced along the way. A button in the picker lists what each one runs, and
+its contents page sums the full set and the missing part. The same totals
+sit over the cart buttons on Blizzard's blueprint window.
 
 ## The spend watcher
 

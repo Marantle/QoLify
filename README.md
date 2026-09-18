@@ -1,9 +1,9 @@
 # QoLify
 
 A modular collection of quality-of-life addons for WoW retail (Interface 120007 /
-Midnight). This one repo ships three CurseForge artifacts: the QoLify suite, plus
-standalone [SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid) and
-[Decor Tools](https://www.curseforge.com/wow/addons/qolify-decor-tools).
+Midnight). This one repo ships four CurseForge artifacts: the QoLify suite, plus
+standalone [SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid),
+[Decor Tools](https://www.curseforge.com/wow/addons/qolify-decor-tools) and CompassBar.
 
 The core addon draws the settings panel and carries the small QoL tweaks. Bigger
 features are **LoadOnDemand modules**: none of their code is loaded until you enable
@@ -51,6 +51,12 @@ respects and never force-loads.
   addon is enabled and takes over with the same data once it is removed. `/cart` opens
   the cart and `/dsw` the settings. The QoLify minimap button replaces the
   standalone's own.
+- **CompassBar**: a compass bar across the screen, the letters sliding past a marker
+  as you turn. Out in the world it carries quests, rares, your group and other places
+  from the map as icons with distances, each kind switchable with its own range.
+  Inside instances the facing is sealed, so the bar turns as a wheel cut into pieces
+  and shows letters only. Same code and SavedVariables as the standalone addon, same
+  standby behaviour. `/cbar` opens its settings.
 
 ## Slash commands
 
@@ -58,10 +64,11 @@ respects and never force-loads.
 - `/qolify version` prints the addon version
 - `/ss` (or `/soundscaper`) opens SoundScaper once its module or standalone is active
 - `/dsw` opens the Decor Tools settings once its module or standalone is active
+- `/cbar` (or `/compassbar`) opens the CompassBar settings once its module or standalone is active
 - `/cart` toggles the Decor Tools shopping cart, `/cart reset` puts the window back to
   its default size and spot
 
-## One repo, three addons
+## One repo, four addons
 
 Modules that also ship standalone keep two .toc files in the same folder:
 
@@ -106,10 +113,12 @@ make package                 build QoLify-x.y.z.zip (core + module folders)
 make package-min             build minified suite zip (comments stripped)
 make package-soundscaper     build the standalone SoundScaper zip
 make package-decorspendwatch build the standalone DecorSpendwatch zip
+make package-compassbar      build the standalone CompassBar zip
 make release                 upload the suite zip to CurseForge
 make release-soundscaper     upload the standalone SoundScaper zip
 make release-decorspendwatch upload the standalone DecorSpendwatch zip
-make release-all             upload all three
+make release-compassbar      upload the standalone CompassBar zip
+make release-all             upload all four
 make clean                   remove built zips
 ```
 
@@ -122,7 +131,7 @@ imply standalone releases.
 
 On GitHub, three workflows wrap the make targets. Pushes to master and every pull
 request run `make lint` and `make check`, and pull requests additionally build all
-three zips as downloadable artifacts. Publishing a GitHub release uploads exactly one
+four zips as downloadable artifacts. Publishing a GitHub release uploads exactly one
 artifact to CurseForge, chosen by the tag name:
 
 | Tag                      | Releases                  |
@@ -130,6 +139,7 @@ artifact to CurseForge, chosen by the tag name:
 | `v1.2.3`                 | the QoLify suite          |
 | `soundscaper-v1.2.3`     | standalone SoundScaper    |
 | `decorspendwatch-v1.2.3` | standalone DecorSpendwatch |
+| `compassbar-v1.2.3`      | standalone CompassBar     |
 
 The workflow refuses to run when the tag's version does not match the artifact's .toc,
 and attaches the zip to the GitHub release. It needs a `CURSEFORGE_TOKEN` repository

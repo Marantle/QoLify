@@ -16,11 +16,12 @@ Type `/qolify` or right-click the minimap button to open the settings.
 ## Modules
 
 **SoundScaper** switches your volume settings automatically as you move between
-activities, so you stop digging through the sound options. Five sections, each with its
-own sliders and mutes per audio channel: Outdoors, Dungeon, Mythic+, Raid and Raid Boss,
-which kicks in the instant a boss encounter starts. Full music out in the world, effects
-only in a key, everything but Master muted on a raid pull. The sync goes both ways, so
-a change made in the game's own audio options is picked up by the section you are in.
+activities, so you stop digging through the sound options. There are six sections, each
+with its own sliders and mutes per audio channel. Outdoors, House, Dungeon, Mythic+ and
+Raid follow where you are, and Raid Boss kicks in the instant a boss encounter starts.
+Full music out in the world, music down low once you step into your house, effects only
+in a key, everything but Master muted on a raid pull. The sync goes both ways, so a
+change made in the game's own audio options is picked up by the section you are in.
 
 **Decor Tools** is a pair of tools for housing decor. The shopping cart is a wish list you
 fill while decorating: hit the + on catalog entries, drop the piece you have selected
@@ -38,9 +39,18 @@ The spend watcher is the budget half: pick a per-item gold cap and
 anything priced above it gets a red warning on its vendor tooltip, buy it anyway and
 you get a note in chat, and a running total tracks what decor has cost you.
 
-Both also exist as standalone addons
+**CompassBar** is a compass bar across the top of the screen, the kind you know from
+Skyrim: the direction letters slide past a marker as you turn. Out in the world it
+also carries places from the map as little icons with their distance: the quest you
+track and your other tracked quests, world quests, quest givers, your map pin, your
+group in class colors, target and focus, entrances, flight points, graveyards, points
+of interest, rares and treasures. Every kind has a switch and a range in yards, and a
+gear on the bar flips the switches on the spot. Inside instances the game keeps
+positions and facing from addons, so there it is letters only, still turning with you.
+
+All three also exist as standalone addons
 ([SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid),
-[Decor Tools](https://www.curseforge.com/wow/addons/qolify-decor-tools)). If you
+[Decor Tools](https://www.curseforge.com/wow/addons/qolify-decor-tools), CompassBar). If you
 already run the standalone, the QoLify module stands by and lets it work. Your settings
 copy over by themselves the first time you log out with both installed, and from then
 on removing the standalone hands everything to the module. Just don't uninstall the

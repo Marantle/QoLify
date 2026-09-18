@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+- New House section for being indoors in a player house, yours or someone
+  else's. It works like Mythic+ does for Dungeon: until you tick "Use separate
+  settings here" on its tab, a house keeps sounding like Outdoors, so nothing
+  changes for you on update. The yard still counts as Outdoors.
+- The window got a little wider to fit the extra tab.
+
 ## 1.3.0
 - New flat look for the window, matching the rest of QoLify: dark panel, gold
   accents, flat buttons and checkboxes instead of the stock Blizzard ones. Same

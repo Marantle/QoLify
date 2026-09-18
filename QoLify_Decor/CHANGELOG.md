@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.5.0
+- Cart missing works away from home. The button and the missing counts used
+  to show up only while you stood in your house, because the counts were
+  taken against that house. The picker now asks for them against your storage
+  alone, so you get the same numbers at a vendor, at the auction house or in
+  a neighbor's living room.
+- A blueprint's page in the picker has a new "Count placed decor" tick. It
+  starts off, and then only what sits in your storage counts as owned. Tick
+  it and pieces already placed in your house count too, the way it used to
+  work indoors, except now from anywhere. It reads the house you stand in, or
+  one of your own when you're away, and with two houses a button next to the
+  tick picks which. Room blueprints don't show the tick, since adding a room
+  leaves your placed decor where it is and the game counts a room against
+  storage either way.
+- Blizzard's blueprint window shows the Cart missing button outside a house
+  too. Opened indoors it keeps Blizzard's own counts, placed pieces included,
+  so the button agrees with the marks in that window.
+- The picker no longer prices every blueprint by itself each time it opens.
+  Those lookups go through the same line to the server a click does, so with
+  a handful of blueprints you sat waiting before one would open. A Price all
+  blueprints button under the list starts the run now, counts down while it
+  goes and stops it on a second click. Opening a blueprint still prices that
+  one, and prices stay for the session.
+- The Full set and Missing lines under a blueprint's pieces cut off once a
+  few currencies pile up. Hovering either one now spells the whole bill out
+  in a tooltip, tinted by what your purse covers, like the cart's own total.
+
 ## 2.4.0
 - Carted pieces that only the auction house sells now show a price too, read
   from Auctionator or Oribos Exchange when you have one of them. It wears

@@ -6,6 +6,7 @@ name: Release
 #   v1.2.3                  the QoLify suite
 #   soundscaper-v1.2.3      standalone SoundScaper
 #   decorspendwatch-v1.2.3  standalone DecorSpendwatch
+#   compassbar-v1.2.3       standalone CompassBar
 #
 # The CurseForge release type comes from the version: a tag containing
 # "-alpha" uploads as alpha and "-beta" as beta (so does ticking GitHub's
@@ -51,6 +52,12 @@ jobs:
               TARGET=release-decorspendwatch
               VERSION="${TAG#decorspendwatch-v}"
               ;;
+            compassbar-v*)
+              NAME=CompassBar
+              TOC=QoLify_CompassBar/CompassBar.toc
+              TARGET=release-compassbar
+              VERSION="${TAG#compassbar-v}"
+              ;;
             v*)
               NAME=QoLify
               TOC=QoLify.toc
@@ -59,7 +66,7 @@ jobs:
               ;;
             *)
               echo "Tag '$TAG' does not name an artifact."
-              echo "Use v<x.y.z> for the suite, or soundscaper-v<x.y.z> / decorspendwatch-v<x.y.z> for a standalone."
+              echo "Use v<x.y.z> for the suite, or soundscaper-v<x.y.z> / decorspendwatch-v<x.y.z> / compassbar-v<x.y.z> for a standalone."
               exit 1
               ;;
           esac

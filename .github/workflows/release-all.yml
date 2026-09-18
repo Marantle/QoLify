@@ -1,6 +1,6 @@
 name: Release all
 
-# Manual escape hatch for the rare case where the suite and both standalones
+# Manual escape hatch for the rare case where the suite and the standalones
 # all changed at once. Day to day, publish a per-artifact GitHub release
 # instead (release.yml). This uploads straight from the chosen branch with
 # whatever versions the .tocs already carry, so bump those and the changelogs
@@ -12,7 +12,7 @@ on:
       artifacts:
         description: What to upload
         type: choice
-        options: [all, suite, soundscaper, decorspendwatch]
+        options: [all, suite, soundscaper, decorspendwatch, compassbar]
         default: all
       release_type:
         description: CurseForge release type
@@ -38,4 +38,5 @@ jobs:
             suite) make release ;;
             soundscaper) make release-soundscaper ;;
             decorspendwatch) make release-decorspendwatch ;;
+            compassbar) make release-compassbar ;;
           esac

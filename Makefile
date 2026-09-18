@@ -23,12 +23,14 @@ DIST_FILES     := $(SRC_FILES)
 # minimap code, the standalone .toc, CHANGELOG.md) out of the suite zip.
 MODULES        := $(patsubst %/,%,$(wildcard $(ADDON)_*/))
 MODULE_FILES   := $(foreach m,$(MODULES),$(addprefix $(m)/,$(call toc_lua,$(m)/$(m).toc)) $(m)/$(m).toc)
+# a module's images, which no .toc lists, ship whole
+MODULE_MEDIA   := $(wildcard $(ADDON)_*/Media/*.png $(ADDON)_*/Media/*.tga)
 
 # Modules that also ship as standalone CurseForge addons. Each has a second
 # .toc named after the standalone folder (inert in a QoLify install, since
 # WoW only reads the .toc matching the folder name) that carries its own
 # version, project ID and file list.
-STANDALONES    := SoundScaper DecorSpendwatch
+STANDALONES    := SoundScaper DecorSpendwatch CompassBar
 
 SS_TOC         := $(ADDON)_SoundScaper/SoundScaper.toc
 SS_VERSION     := $(shell grep "^\#\# Version:" $(SS_TOC) | awk '{print $$3}')
@@ -40,6 +42,11 @@ DSW_VERSION    := $(shell grep "^\#\# Version:" $(DSW_TOC) | awk '{print $$3}')
 DSW_PROJECT    := $(shell grep "^\#\# X-Curse-Project-ID:" $(DSW_TOC) | awk '{print $$3}')
 DSW_FILES      := $(call toc_lua,$(DSW_TOC))
 
+CB_TOC         := $(ADDON)_CompassBar/CompassBar.toc
+CB_VERSION     := $(shell grep "^\#\# Version:" $(CB_TOC) | awk '{print $$3}')
+CB_PROJECT     := $(shell grep "^\#\# X-Curse-Project-ID:" $(CB_TOC) | awk '{print $$3}')
+CB_FILES       := $(call toc_lua,$(CB_TOC)) $(patsubst $(ADDON)_CompassBar/%,%,$(wildcard $(ADDON)_CompassBar/Media/*))
+
 # Lint and format cover every Lua file, packaged or not. Kept as shell globs
 # rather than make wildcards: they force make to run the recipe through sh,
 # whose 64-bit process finds luacheck and stylua in system32 (32-bit GnuWin32
@@ -49,7 +56,7 @@ ALL_LUA        := *.lua QoL/*.lua $(ADDON)_*/*.lua
 RELEASE_TYPE   ?= alpha
 CHANGELOG      ?= See project page for changes.
 
-.PHONY: help lint format check package package-min package-soundscaper package-decorspendwatch release release-soundscaper release-decorspendwatch release-all debug-release clean
+.PHONY: help lint format check package package-min package-soundscaper package-decorspendwatch package-compassbar release release-soundscaper release-decorspendwatch release-compassbar release-all debug-release clean
 
 help:
 	@echo "make lint                    run luacheck over core, QoL and all modules"
@@ -59,10 +66,12 @@ help:
 	@echo "make package-min             build $(ADDON)-$(VERSION)-min.zip (comments stripped)"
 	@echo "make package-soundscaper     build SoundScaper-$(SS_VERSION).zip (standalone)"
 	@echo "make package-decorspendwatch build DecorSpendwatch-$(DSW_VERSION).zip (standalone)"
+	@echo "make package-compassbar      build CompassBar-$(CB_VERSION).zip (standalone)"
 	@echo "make release                 upload the suite zip to CurseForge"
 	@echo "make release-soundscaper     upload the standalone SoundScaper zip"
 	@echo "make release-decorspendwatch upload the standalone DecorSpendwatch zip"
-	@echo "make release-all             upload all three (only when all three changed)"
+	@echo "make release-compassbar      upload the standalone CompassBar zip"
+	@echo "make release-all             upload all four (only when all four changed)"
 	@echo "make clean                   remove built zips"
 	@echo ""
 	@echo "Standalones only need a release when their own files changed and the"
@@ -84,7 +93,7 @@ package:
 	@rm -rf dist
 	@mkdir -p dist/$(ADDON)
 	@cp --parents $(SRC_FILES) dist/$(ADDON)/
-	@cp --parents $(MODULE_FILES) dist/
+	@cp --parents $(MODULE_FILES) $(MODULE_MEDIA) dist/
 	@pwsh -NoProfile -Command "Compress-Archive -Path 'dist/*' -DestinationPath '$(ADDON)-$(VERSION).zip'"
 	@rm -rf dist
 	@echo "Built $(ADDON)-$(VERSION).zip"
@@ -96,6 +105,7 @@ package-min:
 	@mkdir -p dist/$(ADDON)
 	@python minify.py dist/$(ADDON) $(DIST_FILES)
 	@python minify.py dist $(MODULE_FILES)
+	@cp --parents $(MODULE_MEDIA) dist/
 	@pwsh -NoProfile -Command "Compress-Archive -Path 'dist/*' -DestinationPath '$(ADDON)-$(VERSION)-min.zip'"
 	@rm -rf dist
 	@echo "Built $(ADDON)-$(VERSION)-min.zip"
@@ -122,6 +132,9 @@ package-soundscaper:
 
 package-decorspendwatch:
 	$(call PACKAGE_STANDALONE,DecorSpendwatch,$(DSW_VERSION),$(DSW_FILES),$(ADDON)_Decor)
+
+package-compassbar:
+	$(call PACKAGE_STANDALONE,CompassBar,$(CB_VERSION),$(CB_FILES),$(ADDON)_CompassBar)
 
 # Shared upload recipe. Arguments: zip file, CurseForge project ID,
 # changelog path. The project ID comes from the matching .toc, so each
@@ -155,9 +168,12 @@ release-soundscaper: package-soundscaper
 release-decorspendwatch: package-decorspendwatch
 	$(call CURSE_UPLOAD,DecorSpendwatch-$(DSW_VERSION).zip,$(DSW_PROJECT),$(ADDON)_Decor/CHANGELOG.md)
 
-# Convenience for the rare case where the core and both standalones all
+release-compassbar: package-compassbar
+	$(call CURSE_UPLOAD,CompassBar-$(CB_VERSION).zip,$(CB_PROJECT),$(ADDON)_CompassBar/CHANGELOG.md)
+
+# Convenience for the rare case where the core and every standalone all
 # changed. Day to day, release each artifact on its own when it changes.
-release-all: release release-soundscaper release-decorspendwatch
+release-all: release release-soundscaper release-decorspendwatch release-compassbar
 
 debug-release: package
 	@test -n "$(CURSEFORGE_TOKEN)" || { echo "Error: CURSEFORGE_TOKEN not set"; exit 1; }
