@@ -18,7 +18,7 @@ Inside dungeons and raids the game keeps positions and your facing from
 addons, so there the bar shows the letters only, turning with you all the
 same.
 
-Type `/cbar` for the settings, `/cbar on` and `/cbar off` to hide and show it,
+Type `/cbar` for the settings, `/cbar on` and `/cbar off` to show and hide it,
 `/cbar lock` to lock it in place.
 
 CompassBar is also a module of the QoLify suite. If you run both, the module

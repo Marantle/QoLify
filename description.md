@@ -41,16 +41,18 @@ you get a note in chat, and a running total tracks what decor has cost you.
 
 **CompassBar** is a compass bar across the top of the screen, the kind you know from
 Skyrim: the direction letters slide past a marker as you turn. Out in the world it
-also carries places from the map as little icons with their distance: the quest you
-track and your other tracked quests, world quests, quest givers, your map pin, your
-group in class colors, target and focus, entrances, flight points, graveyards, points
-of interest, rares and treasures. Every kind has a switch and a range in yards, and a
-gear on the bar flips the switches on the spot. Inside instances the game keeps
-positions and facing from addons, so there it is letters only, still turning with you.
+also carries places from the map as little icons, with their distance in yards if you
+want it. The quest you track, your group in class colors, your map pin and your target
+all show up, and so do world quests, flight points, rares, treasures and a good few
+more. Every kind has its own switch and range, so rares can stay off the bar until
+they're a few hundred yards away. A gear on the bar flips the switches on the spot,
+and `/cbar` opens the rest. Inside instances the game keeps positions and facing from
+addons, so there it's letters only, still turning with you.
 
 All three also exist as standalone addons
 ([SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid),
-[Decor Tools](https://www.curseforge.com/wow/addons/qolify-decor-tools), CompassBar). If you
+[Decor Tools](https://www.curseforge.com/wow/addons/qolify-decor-tools),
+[CompassBar](https://www.curseforge.com/wow/addons/qolify-compass-bar)). If you
 already run the standalone, the QoLify module stands by and lets it work. Your settings
 copy over by themselves the first time you log out with both installed, and from then
 on removing the standalone hands everything to the module. Just don't uninstall the

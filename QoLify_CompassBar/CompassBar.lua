@@ -22,7 +22,7 @@ local DEFAULTS = {
     tickColor = { 1, 1, 1, 1 },
     markSize = 24,
     dim = 0.5,
-    iconRow = 44, -- the middle of a place's icon, this far under the top edge
+    iconRow = 32, -- the middle of a place's icon, this far under the top edge
     -- what rides the bar out in the world, where places read
     points = {
         quests = true,

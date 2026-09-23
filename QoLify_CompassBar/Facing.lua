@@ -80,6 +80,28 @@ local refused = false
 local plain = false -- the character's facing read as a number this tick
 local HZ = 30
 
+-- The 12.1 hotfix made GetRotation on the ring a Lua error in instances
+-- ("forbidden aspect 'QueryRotation'"). Once it refuses, the ring path is
+-- done for the session: lends go back, the bar blanks where facing is
+-- sealed and still turns out in the world
+local sealed = false
+local SEALED = "the game no longer lets addons read the minimap compass in instances,"
+    .. " so the bar stays blank there. Out in the world it turns as before."
+
+local function readRing()
+    local ring = MinimapCompassTexture
+    if not ring then
+        return
+    end
+    local ok, v = pcall(ring.GetRotation, ring)
+    if ok then
+        return v
+    end
+    sealed = true
+    Facing.ReturnLends()
+    CB.chat(SEALED)
+end
+
 -- a sealed value survives the call and only throws once math touches it,
 -- so a reading counts as usable only when the math goes through. Some
 -- builds hand out nil instead of a secret, that reads as unusable too
@@ -109,11 +131,10 @@ driver:SetScript("OnUpdate", function(_, dt)
         -- was built for the ring's sense
         rot = -facing
         Facing.ReturnLends()
-    else
+    elseif not sealed then
         lendRotation()
         lendRing()
-        local ring = MinimapCompassTexture
-        rot = ring and ring:GetRotation()
+        rot = readRing()
     end
     refused = false
     if rot ~= nil and not pcall(probe.SetRotation, probe, rot) then
@@ -143,6 +164,9 @@ function Facing.Status()
     end
     if plain then
         return "facing: read straight from your character, minimap untouched"
+    end
+    if sealed then
+        return "compass ring: " .. SEALED
     end
     if not MinimapCompassTexture then
         return "compass ring: missing, another addon may have removed it, nothing can turn"
