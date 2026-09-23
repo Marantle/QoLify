@@ -96,8 +96,8 @@ local function build()
         page,
         "GameFontHighlightSmall",
         "The direction letters slide past the marker as you turn, the way a game compass bar does. "
-            .. "Out in the world the bar runs straight and can carry places from the map. In an instance the game "
-            .. "keeps places and facing from addons, so the bar turns as a dial cut into pieces, letters only."
+            .. "It can also carry places from the map. Inside dungeons, raids and delves the game keeps your "
+            .. "facing from addons, so the bar hides there and comes back when you leave."
     )
     blurb:SetPoint("TOPLEFT", 4, -30)
     blurb:SetWidth(600)

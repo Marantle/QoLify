@@ -54,9 +54,9 @@ respects and never force-loads.
 - **CompassBar**: a compass bar across the screen, the letters sliding past a marker
   as you turn. Out in the world it carries quests, rares, your group and other places
   from the map as icons with distances, each kind switchable with its own range.
-  Inside instances the facing is sealed, so the bar turns as a wheel cut into pieces
-  and shows letters only. Same code and SavedVariables as the standalone addon, same
-  standby behaviour. `/cbar` opens its settings.
+  Inside instances the facing is sealed, so the bar hides there. Same code and
+  SavedVariables as the standalone addon, same standby behaviour. `/cbar` opens its
+  settings.
 
 ## Slash commands
 

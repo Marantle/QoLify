@@ -6,7 +6,7 @@ local _, CB = ...
 -- standalone build. Each build's host file calls InitCore once the saved
 -- variables are in and hands its slash commands to HandleSlash.
 
-CB.VERSION = "0.1.0"
+CB.VERSION = "1.0.0"
 
 -- the eight directions clockwise from north, the order everything that
 -- draws a direction walks
@@ -16,7 +16,7 @@ local DEFAULTS = {
     on = true,
     width = 480,
     height = 60,
-    span = 800, -- the wheel's size, how far apart the directions sit
+    span = 800, -- how far apart the directions sit
     letters = true,
     ticks = true, -- a mark under each letter
     tickColor = { 1, 1, 1, 1 },
@@ -89,9 +89,17 @@ end
 function CB.InitCore()
     CompassBarDB = CompassBarDB or {}
     CB.db = fill(CompassBarDB, DEFAULTS)
-    -- a minimap loan stranded by a crash is paid back before anything asks
-    -- for it again
-    CB.Facing.ReturnLends()
+    -- 0.1.0 turned the minimap rotation on inside instances and noted it
+    -- here, so a loan left behind by a crash on that build still goes back
+    if CB.db.rotateLent then
+        CB.db.rotateLent = nil
+        C_CVar.SetCVar("rotateMinimap", "0")
+    end
+    -- every loading screen fires this, so the bar hides on the way into an
+    -- instance and comes back on the way out
+    local zone = CreateFrame("Frame")
+    zone:RegisterEvent("PLAYER_ENTERING_WORLD")
+    zone:SetScript("OnEvent", CB.Apply)
     CB.Apply()
 end
 

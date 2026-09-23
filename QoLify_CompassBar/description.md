@@ -14,9 +14,8 @@ you can keep rares on the bar only once they are within a few hundred yards,
 say. A gear on the bar's corner flips the switches without opening the
 settings.
 
-Inside dungeons and raids the game keeps positions and your facing from
-addons, so there the bar shows the letters only, turning with you all the
-same.
+Inside dungeons, raids and delves the game keeps your facing from addons, so
+the bar hides there and comes back as soon as you leave.
 
 Type `/cbar` for the settings, `/cbar on` and `/cbar off` to show and hide it,
 `/cbar lock` to lock it in place.

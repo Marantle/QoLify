@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1
+- CompassBar module 1.0.0: the bar hides inside dungeons, raids and delves,
+  since a 12.1 hotfix keeps the minimap compass from addons there. Out in
+  the world nothing changes. Its own changelog has the details.
+
 ## 1.5.0
 - New module: CompassBar 0.1.0, a compass bar across the screen. The
   direction letters slide past a marker as you turn, and out in the world

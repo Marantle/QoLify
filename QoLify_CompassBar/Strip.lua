@@ -3,31 +3,19 @@
 local ADDON, CB = ...
 
 -- The bar itself, the letters and ticks sliding past a center marker as
--- the player turns. Two builds of it, picked per tick by whether the
--- facing reads as a number.
---
--- Out in the world it does, so the content is laid out in a line and slid
--- by arithmetic, cheap, and places from the map ride along. In an instance
--- the angle is sealed and only a few sinks move anything by it. A wheel
--- turned by SetRotation, which renders the sealed angle, seen through a
--- window over its top always works, but a wheel bends. So there the window
--- is cut into pieces side by side, each over the top of its own wheel, and
--- each wheel's art is turned a fixed step so the pieces show consecutive
--- slices of the compass. All of them spin by the same value, content
--- leaving one piece walks into the next, and each piece shows so little
--- arc that the band reads straight. Dearer, so only where it has to be.
+-- the player turns. The content is laid out in a line and slid by
+-- arithmetic, and places from the map ride along. It only draws out in the
+-- world, inside instances the facing is sealed and the bar stays hidden.
 
 local Strip = {}
 CB.Strip = Strip
 
 local win, clip
-local builds = {} -- by shape, made on first use
-local using -- the build on screen
-local usingFlat
+local band -- the laid out content, made with the window
 local lastRot -- the driver's last value, so a fresh layout starts at the facing
 local blank = false
 
-local MINOR = 5 -- degrees between the small ticks, the dial art's spacing
+local MINOR = 5 -- degrees between the small ticks
 local TWO_PI = 2 * math.pi
 
 --#region Places
@@ -41,8 +29,7 @@ end
 -- a pool of icons with labels for the places, on the clip, styled on every
 -- gather and put in its spot on every tick: as far left or right of the
 -- marker as its bearing is from the facing, at the dial's spread, hidden
--- once it runs off the end. Both builds show places the same way, the
--- straight one out of the same numbers that slide its content
+-- once it runs off the end, out of the same numbers that slide the content
 local function makePool(build)
     local pool = { items = {}, used = 0 }
 
@@ -151,14 +138,14 @@ local function makeTurn(parent)
             tick:SetSize(4, 14)
             turn.ticks[k] = tick
         else
-            -- every third one taller, the way the dial draws them
+            -- every third one taller
             mark = parent:CreateTexture(nil, "ARTWORK")
             mark:SetColorTexture(1, 1, 1, deg % 15 == 0 and 0.7 or 0.45)
             mark:SetSize(2, deg % 15 == 0 and 14 or 7)
         end
         turn.marks[deg] = mark
     end
-    -- letters off takes the small ticks with it, the way the dial art does
+    -- letters off takes the small ticks with it
     function turn.Place(x0, ppr, s)
         for deg, mark in pairs(turn.marks) do
             local x = x0 + math.rad(deg) * ppr
@@ -189,8 +176,8 @@ local function buildFlat()
 
     function f.Lay(s)
         f.s = s
-        -- the same spread the dial has in instances, its radius in pixels
-        -- per radian, so a wider bar shows more rather than stretching
+        -- pixels per radian come from the spread alone, so a wider bar shows
+        -- more rather than stretching
         local ppr = s.span / 2
         f.ppr, f.turn = ppr, TWO_PI * ppr
         content:SetSize(3 * f.turn + s.width, s.height)
@@ -217,147 +204,10 @@ local function buildFlat()
         content:SetPoint("TOPLEFT", clip, "TOPLEFT", -(rot % TWO_PI) * f.ppr - f.turn, 0)
         CB.Points.Track()
         pool.Place()
-        return true
     end
 
     function f.SetShown(on)
         content:SetShown(on)
-        if not on then
-            pool.Hide()
-        end
-    end
-
-    return f
-end
-
---#endregion
-
---#region Dial
-
--- the rows under the rim in pixels, the same the straight build uses: the
--- middle of a big and a small letter and the middle of a mark. And what
--- the letter and bar images show at
-local LETTER_MID, ORDINAL_MID, MARK_MID = 12, 10, 37
-local GLYPH_PX, BAR_PX = 26, 16
-
--- one piece: its own window, a wheel with the small ticks, and riding it
--- at a fixed pixel size each letter and its mark, placed by their depth
--- under the rim
-local function newPiece()
-    local piece = {}
-    local window = CreateFrame("Frame", nil, clip)
-    window:SetClipsChildren(true)
-    piece.window = window
-    piece.dial = window:CreateTexture(nil, "ARTWORK")
-    piece.glyphs = {}
-    piece.marks = {}
-    for k = 0, 7 do
-        piece.glyphs[k] = window:CreateTexture(nil, "ARTWORK", nil, 1)
-        piece.glyphs[k]:SetVertexColor(1, 1, 1, 0.9)
-        piece.marks[k] = window:CreateTexture(nil, "ARTWORK", nil, 1)
-    end
-
-    -- the wheel hangs under the window's top edge, its rim just inside, and
-    -- its art is turned by the piece's step so its top shows the piece's
-    -- own slice of the compass. Nothing here touches the facing
-    function piece.Lay(s, x, w, step)
-        window:SetSize(w, s.height)
-        window:ClearAllPoints()
-        window:SetPoint("TOPLEFT", clip, "TOPLEFT", x, 0)
-        local r = s.span / 2
-        local function wheel(t)
-            t:SetSize(s.span, s.span)
-            t:ClearAllPoints()
-            t:SetPoint("CENTER", window, "TOP", 0, -r)
-        end
-        wheel(piece.dial)
-        piece.dial:SetTexture(CB.Art.Path("dial"), "CLAMP", "CLAMP")
-        CB.Art.Turn(piece.dial, step)
-        piece.dial:SetShown(s.letters)
-        for k, slot in ipairs(CB.SLOTS) do
-            local deg = (k - 1) * 45 + step
-            local g, t = piece.glyphs[k - 1], piece.marks[k - 1]
-            wheel(g)
-            g:SetTexture(CB.Art.Path("glyph_" .. slot:lower()), "CLAMP", "CLAMP")
-            CB.Art.Place(g, deg, 1 - (k % 2 == 1 and LETTER_MID or ORDINAL_MID) / r, GLYPH_PX / s.span)
-            g:SetShown(s.letters)
-            wheel(t)
-            t:SetTexture(CB.Art.Path("bar"), "CLAMP", "CLAMP")
-            CB.Art.Place(t, deg, 1 - MARK_MID / r, BAR_PX / s.span)
-            t:SetVertexColor(unpack(s.tickColor))
-            t:SetShown(s.ticks)
-        end
-    end
-
-    function piece.Spin(rot)
-        piece.dial:SetRotation(rot)
-        for k = 0, 7 do
-            if piece.glyphs[k]:IsShown() then
-                piece.glyphs[k]:SetRotation(rot)
-            end
-            if piece.marks[k]:IsShown() then
-                piece.marks[k]:SetRotation(rot)
-            end
-        end
-    end
-
-    return piece
-end
-
--- Anything on the wheel leans by its angle from the wheel's top, so a tick
--- at a window's edge leans by half the window's arc. Windows are made
--- narrow enough that this stays under the lean, which a 25 pixel tick
--- shows as under half a pixel
-local MAX_LEAN = math.rad(0.5)
-local MAX_PIECES = 64
-
-local function buildCurved()
-    local f = { pieces = {}, shown = 0 }
-    local pool = makePool(f)
-
-    function f.Lay(s)
-        f.s = s
-        local r = s.span / 2
-        local n = math.min(math.max(math.ceil(s.width / (2 * r * math.sin(MAX_LEAN))), 1), MAX_PIECES)
-        local w = s.width / n
-        -- the step between wheels is the exact arc a window's chord covers,
-        -- so the slices meet edge to edge. A piece left of the middle shows
-        -- what lies west of north, which takes the wheel turned clockwise,
-        -- so the steps run positive on the left
-        local step = math.deg(2 * math.asin(w / (2 * r)))
-        for i = 1, n do
-            f.pieces[i] = f.pieces[i] or newPiece()
-            f.pieces[i].Lay(s, (i - 1) * w, w, ((n + 1) / 2 - i) * step)
-            f.pieces[i].window:Show()
-        end
-        for i = n + 1, #f.pieces do
-            f.pieces[i].window:Hide()
-        end
-        f.shown = n
-        f.LayPoints(s)
-    end
-
-    function f.LayPoints(s)
-        pool.Lay(s)
-        pool.Place()
-    end
-
-    function f.Spin(rot)
-        for i = 1, f.shown do
-            f.pieces[i].Spin(rot)
-        end
-        if CB.Facing.Plain() then
-            f.rot = rot
-            CB.Points.Track()
-            pool.Place()
-        end
-        return true
-    end
-
-    function f.SetShown(on)
-        for i = 1, f.shown do
-            f.pieces[i].window:SetShown(on)
-        end
         if not on then
             pool.Hide()
         end
@@ -379,8 +229,7 @@ local function build()
     clip:SetClipsChildren(true)
 
     -- the ends fade into the floor, as dark as the floor is. Overlays rather
-    -- than a mask, since the straight build's letters are font strings and
-    -- those take no mask
+    -- than a mask, since the letters are font strings and those take no mask
     local fades = {}
     for _, side in ipairs({ { "LEFT", 1, 0 }, { "RIGHT", 0, 1 } }) do
         local t = win:CreateTexture(nil, "OVERLAY")
@@ -443,32 +292,13 @@ local function build()
             root:CreateCheckbox("Distances", flip("distance"))
         end)
     end)
-end
 
-local MAKE = { flat = buildFlat, pieces = buildCurved }
-
--- the build for the facing on hand, laid out fresh from the settings.
--- Places only mean anything where the facing reads plain
-local function use(plain)
-    for _, f in pairs(builds) do
-        f.SetShown(false)
-    end
-    usingFlat = plain
-    local shape = plain and "flat" or "pieces"
-    builds[shape] = builds[shape] or MAKE[shape]()
-    using = builds[shape]
-    using.Lay(CB.db)
-    -- laid out it sits at north, and a tick is long enough to see that
-    if lastRot then
-        using.Spin(lastRot)
-    end
-    using.SetShown(not blank)
-    CB.Points.Want(plain)
+    band = buildFlat()
 end
 
 function Strip.Apply()
     local s = CB.db
-    if not s.on then
+    if not s.on or IsInInstance() then
         if win then
             win:Hide()
         end
@@ -480,9 +310,15 @@ function Strip.Apply()
     end
     win:SetSize(s.width + 8, s.height + 8)
     win.SetDim(s.dim)
-    -- shown first, the gather the build starts asks whether the bar is up
+    -- shown first, the gather Points starts asks whether the bar is up
     win:Show()
-    use(CB.Facing.Plain())
+    band.Lay(s)
+    -- laid out it sits at north, and a tick is long enough to see that
+    if lastRot then
+        band.Spin(lastRot)
+    end
+    band.SetShown(not blank)
+    CB.Points.Want(true)
 end
 
 function Strip.Drawing()
@@ -494,21 +330,21 @@ function Strip.Applied()
     return Strip.Drawing() and CB.db or nil
 end
 
--- for /cbar status: the build on screen
+-- for /cbar status
 function Strip.Status()
-    if not Strip.Drawing() then
+    if not CB.db.on then
         return "bar: off"
     end
-    return ("bar: %s, facing %s"):format(
-        usingFlat and "laid out straight" or "a wheel in pieces",
-        usingFlat and "plain" or "sealed"
-    )
+    if IsInInstance() then
+        return "bar: hidden, the game keeps your facing from addons inside instances"
+    end
+    return "bar: on"
 end
 
 -- Points gathered a fresh list
 function Strip.PointsChanged()
-    if Strip.Drawing() and using then
-        using.LayPoints(CB.db)
+    if Strip.Drawing() then
+        band.LayPoints(CB.db)
     end
 end
 
@@ -516,20 +352,15 @@ function Strip.Spin(rot)
     if not Strip.Drawing() then
         return
     end
-    -- the facing can start or stop reading plain between ticks, walking
-    -- into an instance say, and the build follows
-    local plain = CB.Facing.Plain()
     lastRot = rot
-    if plain ~= usingFlat then
-        use(plain)
-    end
-    if rot == nil or not using.Spin(rot) then
+    if rot == nil then
         if not blank then
             blank = true
-            using.SetShown(false)
+            band.SetShown(false)
         end
         return
     end
+    band.Spin(rot)
     if blank then
         blank = false
         CB.Apply()

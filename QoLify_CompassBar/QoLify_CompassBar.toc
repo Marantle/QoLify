@@ -1,7 +1,7 @@
 ## Interface: 120007, 120100
 ## Title: QoLify: CompassBar
 ## Notes: A compass bar across the screen. The direction letters slide past a marker as you turn, and out in the world quests, rares and your group ride along.
-## Version: 0.1.0
+## Version: 1.0.0
 ## Author: Rothirr
 ## IconTexture: Interface\AddOns\QoLify_CompassBar\Media\logo
 ## LoadOnDemand: 1

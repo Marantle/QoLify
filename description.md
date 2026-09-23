@@ -46,8 +46,8 @@ want it. The quest you track, your group in class colors, your map pin and your 
 all show up, and so do world quests, flight points, rares, treasures and a good few
 more. Every kind has its own switch and range, so rares can stay off the bar until
 they're a few hundred yards away. A gear on the bar flips the switches on the spot,
-and `/cbar` opens the rest. Inside instances the game keeps positions and facing from
-addons, so there it's letters only, still turning with you.
+and `/cbar` opens the rest. Inside instances the game keeps your facing from addons,
+so the bar hides there and comes back when you leave.
 
 All three also exist as standalone addons
 ([SoundScaper](https://www.curseforge.com/wow/addons/soundscaper-volume-profiles-for-dungeon-raid),

@@ -5,9 +5,8 @@ local _, CB = ...
 -- Things with a place in the world, for the bar: the quest you are
 -- tracking, the objectives of tracked quests on this map, your map pin,
 -- group members, points of interest and the rares and treasures the map
--- shows. All of it reads plain out in the world and nothing in instances,
--- where positions are sealed, so the list is empty there and the bar
--- shows letters only. Gathered twice a second while the bar wants it.
+-- shows. All of it reads plain out in the world, where the bar lives.
+-- Gathered twice a second while the bar wants it.
 
 local Points = {}
 CB.Points = Points
